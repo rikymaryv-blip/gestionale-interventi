@@ -1,15 +1,19 @@
 import { useEffect, useState } from "react"
 import dayjs from "dayjs"
+import "dayjs/locale/it"
 import { supabase } from "../../supabaseClient"
+
+dayjs.locale("it")
 
 export default function CalendarMonth() {
   const [operatori, setOperatori] = useState([])
   const [selectedOperator, setSelectedOperator] = useState("")
   const [oreMese, setOreMese] = useState([])
 
-  const today = dayjs()
-  const startOfMonth = dayjs().startOf("month")
-  const endOfMonth = dayjs().endOf("month")
+  const oggi = dayjs()
+  const meseCorrente = oggi.format("MMMM YYYY") // es: febbraio 2026
+  const giorniNelMese = oggi.daysInMonth()
+  const annoMese = oggi.format("YYYY-MM")
 
   useEffect(() => {
     loadOperatori()
@@ -18,8 +22,6 @@ export default function CalendarMonth() {
   useEffect(() => {
     if (selectedOperator) {
       loadOre()
-    } else {
-      setOreMese([])
     }
   }, [selectedOperator])
 
@@ -30,7 +32,7 @@ export default function CalendarMonth() {
       .order("nome", { ascending: true })
 
     if (error) {
-      console.error(error)
+      console.error("Errore caricamento operatori:", error)
       return
     }
 
@@ -38,84 +40,86 @@ export default function CalendarMonth() {
   }
 
   async function loadOre() {
+    const start = oggi.startOf("month").format("YYYY-MM-DD")
+    const end = oggi.endOf("month").format("YYYY-MM-DD")
+
     const { data, error } = await supabase
       .from("vista_ore_giornaliere")
       .select("*")
       .eq("operatore", selectedOperator)
-      .gte("data", startOfMonth.format("YYYY-MM-DD"))
-      .lte("data", endOfMonth.format("YYYY-MM-DD"))
+      .gte("data", start)
+      .lte("data", end)
 
     if (error) {
-      console.error(error)
+      console.error("Errore caricamento ore:", error)
       return
     }
 
     setOreMese(data || [])
   }
 
-  function getColor(dateString) {
-    const date = dayjs(dateString)
+  function getColore(giornoCompleto) {
+    const trovato = oreMese.find(o => o.data === giornoCompleto)
 
-    // Giorni futuri → bianco
-    if (date.isAfter(today, "day")) {
-      return "#ffffff"
-    }
-
-    // Weekend → grigio
-    if (date.day() === 0 || date.day() === 6) {
-      return "#e0e0e0"
-    }
-
-    const record = oreMese.find(o => o.data === dateString)
-
-    if (!record) return "#ff4d4d" // Rosso → 0 ore
-    if (record.ore < 8) return "#ff4d4d" // Rosso → meno di 8
-    return "#4caf50" // Verde → 8 o più
+    if (!trovato) return "#ffffff"
+    if (trovato.ore < 8) return "#f8d7da" // rosso chiaro
+    return "#d4edda" // verde chiaro
   }
-
-  const daysInMonth = startOfMonth.daysInMonth()
-  const monthLabel = startOfMonth.format("MMMM YYYY")
 
   return (
     <div>
-      <h2>{monthLabel}</h2>
+      <h2 style={{ marginBottom: "10px" }}>
+        Calendario mese di {meseCorrente}
+      </h2>
 
-      <select
-        value={selectedOperator}
-        onChange={(e) => setSelectedOperator(e.target.value)}
-        style={{ marginBottom: "20px" }}
-      >
-        <option value="">Seleziona operatore</option>
-        {operatori.map(op => (
-          <option key={op.id} value={op.nome}>
-            {op.nome}
-          </option>
-        ))}
-      </select>
+      <div style={{ marginBottom: "20px" }}>
+        <label style={{ marginRight: "10px" }}>
+          Seleziona operatore:
+        </label>
+
+        <select
+          value={selectedOperator}
+          onChange={(e) => setSelectedOperator(e.target.value)}
+        >
+          <option value="">-- Seleziona --</option>
+          {operatori.map(op => (
+            <option key={op.id} value={op.nome}>
+              {op.nome}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(7, 1fr)",
-          gap: "5px"
+          gap: "6px"
         }}
       >
-        {[...Array(daysInMonth)].map((_, i) => {
-          const day = String(i + 1).padStart(2, "0")
-          const dateString = `${startOfMonth.format("YYYY-MM")}-${day}`
+        {Array.from({ length: giorniNelMese }).map((_, i) => {
+          const giornoNumero = String(i + 1).padStart(2, "0")
+          const dataCompleta = `${annoMese}-${giornoNumero}`
+          const dataFormattata = dayjs(dataCompleta).format("DD/MM/YYYY")
 
           return (
             <div
-              key={dateString}
+              key={dataCompleta}
               style={{
-                padding: "15px",
+                padding: "12px",
+                backgroundColor: getColore(dataCompleta),
                 border: "1px solid #ccc",
-                backgroundColor: getColor(dateString),
+                borderRadius: "6px",
                 textAlign: "center",
-                fontWeight: "bold"
+                fontSize: "14px"
               }}
             >
-              {day}
+              <div style={{ fontWeight: "bold" }}>
+                {giornoNumero}
+              </div>
+              <div style={{ fontSize: "12px" }}>
+                {dataFormattata}
+              </div>
             </div>
           )
         })}

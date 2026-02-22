@@ -100,3 +100,67 @@ export async function salvaOreOperatore(intervento_id, operatore_id, ore) {
 
   return { data, error }
 }
+
+// =========================
+// RICERCA MATERIALE DEFINITIVA
+// =========================
+
+export async function cercaPreferiti(testo) {
+  if (!testo || testo.length < 2) {
+    return { data: [], error: null }
+  }
+
+  const cleaned = testo.trim()
+
+  const { data, error } = await supabase
+    .from("articoli_preferiti")
+    .select("id, codice, descrizione, prezzo")
+    .ilike("codice", `${cleaned}%`)
+    .limit(20)
+
+  return { data: data || [], error }
+}
+
+export async function cercaListino(testo) {
+  if (!testo) {
+    return { data: [], error: null }
+  }
+
+  // 🔒 Pulizia intelligente input
+  const cleaned = testo
+    .trim()
+    .replace(/\s+/g, " ")
+
+  // 🔒 Blocca query con spazio finale o troppo corta
+  if (!cleaned || cleaned.length < 2 || cleaned.endsWith(" ")) {
+    return { data: [], error: null }
+  }
+
+  const { data, error } = await supabase.rpc(
+    "cerca_listino_fast",
+    { q: cleaned, lim: 30 }
+  )
+
+  return { data: data || [], error }
+}
+
+
+// =========================
+// MATERIALI BOLLETTINO
+// =========================
+
+export async function salvaMateriale(intervento_id, materiale) {
+  const { data, error } = await supabase
+    .from("materiali_bollettino")
+    .insert([{
+      intervento_id,
+      codice: materiale.codice,
+      descrizione: materiale.descrizione,
+      quantita: materiale.quantita,
+      prezzo: materiale.prezzo,
+      totale: materiale.quantita * materiale.prezzo,
+      origine: "listino"
+    }])
+
+  return { data, error }
+}

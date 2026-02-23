@@ -14,6 +14,14 @@ export async function getInterventi() {
         id,
         ore,
         operatori(nome)
+      ),
+      materiali_bollettino(
+        id,
+        codice,
+        descrizione,
+        quantita,
+        prezzo,
+        totale
       )
     `)
     .order("data", { ascending: false })
@@ -25,7 +33,11 @@ export async function createIntervento(descrizione, cliente_id, data) {
   const { data: inserted, error } = await supabase
     .from("interventi")
     .insert([{ descrizione, data, cliente_id }])
-    .select("*, clienti(nome)")
+    .select(`
+      *,
+      clienti(nome),
+      materiali_bollettino(*)
+    `)
     .single()
 
   return { data: inserted, error }
@@ -36,7 +48,11 @@ export async function updateIntervento(id, descrizione, cliente_id, data) {
     .from("interventi")
     .update({ descrizione, cliente_id, data })
     .eq("id", id)
-    .select("*, clienti(nome)")
+    .select(`
+      *,
+      clienti(nome),
+      materiali_bollettino(*)
+    `)
     .single()
 
   return { data: updated, error }
@@ -102,7 +118,7 @@ export async function salvaOreOperatore(intervento_id, operatore_id, ore) {
 }
 
 // =========================
-// RICERCA MATERIALE DEFINITIVA
+// RICERCA MATERIALE
 // =========================
 
 export async function cercaPreferiti(testo) {
@@ -126,12 +142,10 @@ export async function cercaListino(testo) {
     return { data: [], error: null }
   }
 
-  // 🔒 Pulizia intelligente input
   const cleaned = testo
     .trim()
     .replace(/\s+/g, " ")
 
-  // 🔒 Blocca query con spazio finale o troppo corta
   if (!cleaned || cleaned.length < 2 || cleaned.endsWith(" ")) {
     return { data: [], error: null }
   }
@@ -143,7 +157,6 @@ export async function cercaListino(testo) {
 
   return { data: data || [], error }
 }
-
 
 // =========================
 // MATERIALI BOLLETTINO

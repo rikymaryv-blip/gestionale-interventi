@@ -38,13 +38,25 @@ function InterventoList({ interventi, onDelete, onEdit }) {
               <strong>Descrizione:</strong> {i.descrizione}
             </div>
 
-            {/* 🔹 BLOCCO OPERATORI CON ORE */}
+            {/* 🔹 OPERATORI */}
             {i.ore_operatori && i.ore_operatori.length > 0 && (
               <div style={{ marginTop: "10px" }}>
                 <strong>Operatori:</strong>
                 {i.ore_operatori.map((op, index) => (
                   <div key={index}>
                     {op.operatori?.nome} - {op.ore} ore
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 🔹 MATERIALI (NUOVO BLOCCO) */}
+            {i.materiali_bollettino && i.materiali_bollettino.length > 0 && (
+              <div style={{ marginTop: "10px" }}>
+                <strong>Materiali:</strong>
+                {i.materiali_bollettino.map((m, index) => (
+                  <div key={index}>
+                    {m.codice} - {m.descrizione} | Qta: {m.quantita} | € {m.prezzo}
                   </div>
                 ))}
               </div>
@@ -70,4 +82,5 @@ function InterventoList({ interventi, onDelete, onEdit }) {
 }
 
 export default InterventoList;
+
 

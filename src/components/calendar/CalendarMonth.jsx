@@ -10,11 +10,13 @@ export default function CalendarMonth() {
   const [operatori, setOperatori] = useState([])
   const [selectedOperator, setSelectedOperator] = useState("")
   const [oreMese, setOreMese] = useState([])
+  const [currentDate, setCurrentDate] = useState(dayjs())
+  const [giornoSelezionato, setGiornoSelezionato] = useState(null)
+  const [interventiGiorno, setInterventiGiorno] = useState([])
 
-  const oggi = dayjs()
-  const meseCorrente = oggi.format("MMMM YYYY")
-  const giorniNelMese = oggi.daysInMonth()
-  const annoMese = oggi.format("YYYY-MM")
+  const meseCorrente = currentDate.format("MMMM YYYY")
+  const giorniNelMese = currentDate.daysInMonth()
+  const annoMese = currentDate.format("YYYY-MM")
 
   useEffect(() => {
     loadOperatori()
@@ -26,7 +28,7 @@ export default function CalendarMonth() {
     } else {
       setOreMese([])
     }
-  }, [selectedOperator])
+  }, [selectedOperator, currentDate])
 
   async function loadOperatori() {
     const { data } = await supabase
@@ -38,8 +40,8 @@ export default function CalendarMonth() {
   }
 
   async function loadOre() {
-    const start = oggi.startOf("month").format("YYYY-MM-DD")
-    const end = oggi.endOf("month").format("YYYY-MM-DD")
+    const start = currentDate.startOf("month").format("YYYY-MM-DD")
+    const end = currentDate.endOf("month").format("YYYY-MM-DD")
 
     const { data } = await supabase
       .from("vista_ore_giornaliere")
@@ -50,6 +52,29 @@ export default function CalendarMonth() {
       .order("data", { ascending: true })
 
     setOreMese(data || [])
+  }
+
+  async function loadInterventiGiorno(dataCompleta) {
+    const { data, error } = await supabase
+      .from("ore_operatori")
+      .select(`
+        ore,
+        interventi (
+          data,
+          descrizione,
+          clienti ( nome )
+        ),
+        operatori ( nome )
+      `)
+      .eq("operatori.nome", selectedOperator)
+      .eq("interventi.data", dataCompleta)
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    setInterventiGiorno(data || [])
   }
 
   const oreMap = useMemo(() => {
@@ -69,77 +94,23 @@ export default function CalendarMonth() {
     return "#fff3cd"
   }
 
-  async function exportToExcel() {
-    if (!selectedOperator) {
-      alert("Seleziona un operatore prima di esportare.")
-      return
-    }
-
-    const start = oggi.startOf("month").format("YYYY-MM-DD")
-    const end = oggi.endOf("month").format("YYYY-MM-DD")
-
-    const { data, error } = await supabase
-      .from("ore_operatori")
-      .select(`
-        ore,
-        interventi (
-          data,
-          descrizione,
-          clienti ( nome )
-        ),
-        operatori ( nome )
-      `)
-      .eq("operatori.nome", selectedOperator)
-      .gte("interventi.data", start)
-      .lte("interventi.data", end)
-
-    if (error) {
-      console.error(error)
-      alert("Errore durante esportazione - guarda console")
-      return
-    }
-
-    // ✅ Ordiniamo lato JavaScript (evita errori PostgREST)
-    const sorted = data.sort((a, b) =>
-      new Date(a.interventi.data) - new Date(b.interventi.data)
-    )
-
-    const datiExport = sorted.map(item => ({
-      Data: dayjs(item.interventi.data).format("DD/MM/YYYY"),
-      Cliente: item.interventi.clienti?.nome || "",
-      Descrizione: item.interventi.descrizione || "",
-      Operatore: item.operatori?.nome || "",
-      Ore: Number(item.ore)
-    }))
-
-    const totaleOre = datiExport.reduce((sum, r) => sum + r.Ore, 0)
-
-    datiExport.push({})
-    datiExport.push({
-      Data: "TOTALE",
-      Ore: totaleOre
-    })
-
-    const worksheet = XLSX.utils.json_to_sheet(datiExport)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Interventi")
-
-    XLSX.writeFile(
-      workbook,
-      `Interventi_${selectedOperator}_${annoMese}.xlsx`
-    )
+  function cambiaMese(offset) {
+    setCurrentDate(currentDate.add(offset, "month"))
+    setGiornoSelezionato(null)
+    setInterventiGiorno([])
   }
 
   return (
     <div>
-      <h2 style={{ marginBottom: "10px" }}>
-        Calendario mese di {meseCorrente}
-      </h2>
+      {/* NAVIGAZIONE MESE */}
+      <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+        <button onClick={() => cambiaMese(-1)}>◀</button>
+        <h2>{meseCorrente}</h2>
+        <button onClick={() => cambiaMese(1)}>▶</button>
+      </div>
 
       <div style={{ marginBottom: "20px" }}>
-        <label style={{ marginRight: "10px" }}>
-          Seleziona operatore:
-        </label>
+        <label>Seleziona operatore: </label>
 
         <select
           value={selectedOperator}
@@ -152,19 +123,9 @@ export default function CalendarMonth() {
             </option>
           ))}
         </select>
-
-        <button
-          onClick={exportToExcel}
-          style={{
-            marginLeft: "15px",
-            padding: "6px 12px",
-            cursor: "pointer"
-          }}
-        >
-          Esporta Excel
-        </button>
       </div>
 
+      {/* CALENDARIO */}
       <div
         style={{
           display: "grid",
@@ -175,34 +136,54 @@ export default function CalendarMonth() {
         {Array.from({ length: giorniNelMese }).map((_, i) => {
           const giornoNumero = String(i + 1).padStart(2, "0")
           const dataCompleta = `${annoMese}-${giornoNumero}`
-          const dataFormattata = dayjs(dataCompleta).format("DD/MM/YYYY")
           const ore = oreMap[dataCompleta] || 0
 
           return (
             <div
               key={dataCompleta}
+              onClick={() => {
+                setGiornoSelezionato(dataCompleta)
+                loadInterventiGiorno(dataCompleta)
+              }}
               style={{
                 padding: "12px",
                 backgroundColor: getColore(dataCompleta),
                 border: "1px solid #ccc",
                 borderRadius: "6px",
                 textAlign: "center",
-                fontSize: "14px"
+                cursor: "pointer"
               }}
             >
-              <div style={{ fontWeight: "bold" }}>
-                {giornoNumero}
-              </div>
-              <div style={{ fontSize: "12px" }}>
-                {dataFormattata}
-              </div>
-              <div style={{ marginTop: "4px", fontSize: "13px" }}>
-                {ore} h
-              </div>
+              <div><strong>{giornoNumero}</strong></div>
+              <div>{ore} h</div>
             </div>
           )
         })}
       </div>
+
+      {/* DETTAGLIO GIORNO */}
+      {giornoSelezionato && (
+        <div style={{ marginTop: "30px" }}>
+          <h3>Interventi del {dayjs(giornoSelezionato).format("DD/MM/YYYY")}</h3>
+
+          {interventiGiorno.length === 0 && (
+            <p>Nessun intervento registrato</p>
+          )}
+
+          {interventiGiorno.map((item, index) => (
+            <div key={index} style={{
+              border: "1px solid #ddd",
+              padding: "10px",
+              marginBottom: "8px",
+              borderRadius: "6px"
+            }}>
+              <strong>Cliente:</strong> {item.interventi.clienti?.nome} <br />
+              <strong>Descrizione:</strong> {item.interventi.descrizione} <br />
+              <strong>Ore:</strong> {item.ore}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,53 +1,88 @@
-<h1 style={{color: "red"}}>PAGINA TEST</h1>
 import { useEffect, useState } from "react"
-import {
-  getInterventi,
-  deleteIntervento
-} from "../services/interventiService"
-
+import { supabase } from "../supabaseClient"
 import InterventoForm from "../components/InterventoForm"
 import InterventoList from "../components/InterventoList"
-import ClienteForm from "../components/ClienteForm"
 
 export default function InterventiPage() {
+
   const [interventi, setInterventi] = useState([])
-  const [editing, setEditing] = useState(null)
+  const [refresh, setRefresh] = useState(false)
+  const [interventoInModifica, setInterventoInModifica] = useState(null)
 
   useEffect(() => {
     loadInterventi()
-  }, [])
+  }, [refresh])
 
   async function loadInterventi() {
-    const { data } = await getInterventi()
-    setInterventi(data || [])
+
+    const { data: interventiData } = await supabase
+      .from("interventi")
+      .select(`
+        *,
+        clienti ( nome ),
+        ore_operatori (
+          id,
+          ore,
+          operatore_id,
+          operatori ( nome )
+        )
+      `)
+      .order("data", { ascending: false })
+
+    if (!interventiData) return
+
+    const interventiCompleti = await Promise.all(
+      interventiData.map(async (intervento) => {
+
+        const { data: materiali } = await supabase
+          .from("materiali_bollettino")
+          .select("*")
+          .eq("intervento_id", intervento.id)
+
+        return {
+          ...intervento,
+          materiali_bollettino: materiali || []
+        }
+      })
+    )
+
+    setInterventi(interventiCompleti)
+  }
+
+  function handleSaved() {
+    setInterventoInModifica(null)
+    setRefresh(!refresh)
   }
 
   async function handleDelete(id) {
+
     if (!window.confirm("Eliminare intervento?")) return
 
-    await deleteIntervento(id)
-    await loadInterventi()
+    await supabase.from("materiali_bollettino").delete().eq("intervento_id", id)
+    await supabase.from("ore_operatori").delete().eq("intervento_id", id)
+    await supabase.from("interventi").delete().eq("id", id)
+
+    setRefresh(!refresh)
   }
 
   return (
-    <div style={{ padding: "30px" }}>
-      <h1>Gestionale Interventi</h1>
+    <div>
 
-      <ClienteForm />
+      <h1>Gestione Interventi</h1>
 
       <InterventoForm
-        editing={editing}
-        onSaved={async () => {
-          setEditing(null)
-          await loadInterventi()
-        }}
+        onSaved={handleSaved}
+        interventoDaModificare={interventoInModifica}
       />
+
+      <hr style={{ margin: "30px 0" }} />
 
       <InterventoList
         interventi={interventi}
         onDelete={handleDelete}
-        onEdit={setEditing}
+        onEdit={(i) => setInterventoInModifica(i)}
       />
+
     </div>
   )
 }

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import dayjs from "dayjs"
 import "dayjs/locale/it"
 import { supabase } from "../../supabaseClient"
+import * as XLSX from "xlsx"
 
 dayjs.locale("it")
 
@@ -22,19 +23,16 @@ export default function CalendarMonth() {
   useEffect(() => {
     if (selectedOperator) {
       loadOre()
+    } else {
+      setOreMese([])
     }
   }, [selectedOperator])
 
   async function loadOperatori() {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("operatori")
       .select("*")
       .order("nome", { ascending: true })
-
-    if (error) {
-      console.error("Errore caricamento operatori:", error)
-      return
-    }
 
     setOperatori(data || [])
   }
@@ -43,30 +41,93 @@ export default function CalendarMonth() {
     const start = oggi.startOf("month").format("YYYY-MM-DD")
     const end = oggi.endOf("month").format("YYYY-MM-DD")
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("vista_ore_giornaliere")
       .select("*")
       .eq("operatore", selectedOperator)
       .gte("data", start)
       .lte("data", end)
-
-    if (error) {
-      console.error("Errore caricamento ore:", error)
-      return
-    }
+      .order("data", { ascending: true })
 
     setOreMese(data || [])
   }
 
+  const oreMap = useMemo(() => {
+    const map = {}
+    oreMese.forEach(item => {
+      const dataPulita = String(item.data).substring(0, 10)
+      map[dataPulita] = Number(item.ore)
+    })
+    return map
+  }, [oreMese])
+
   function getColore(giornoCompleto) {
-    const trovato = oreMese.find(o => o.data === giornoCompleto)
+    const ore = oreMap[giornoCompleto]
+    if (ore == null) return "#ffffff"
+    if (ore > 8) return "#f8d7da"
+    if (ore === 8) return "#d4edda"
+    return "#fff3cd"
+  }
 
-    if (!trovato) return "#ffffff"
+  async function exportToExcel() {
+    if (!selectedOperator) {
+      alert("Seleziona un operatore prima di esportare.")
+      return
+    }
 
-    if (trovato.ore > 8) return "#f8d7da"      // 🔴 rosso se > 8
-    if (trovato.ore === 8) return "#d4edda"   // 🟢 verde se = 8
+    const start = oggi.startOf("month").format("YYYY-MM-DD")
+    const end = oggi.endOf("month").format("YYYY-MM-DD")
 
-    return "#fff3cd" // 🟡 giallo se < 8
+    const { data, error } = await supabase
+      .from("ore_operatori")
+      .select(`
+        ore,
+        interventi (
+          data,
+          descrizione,
+          clienti ( nome )
+        ),
+        operatori ( nome )
+      `)
+      .eq("operatori.nome", selectedOperator)
+      .gte("interventi.data", start)
+      .lte("interventi.data", end)
+
+    if (error) {
+      console.error(error)
+      alert("Errore durante esportazione - guarda console")
+      return
+    }
+
+    // ✅ Ordiniamo lato JavaScript (evita errori PostgREST)
+    const sorted = data.sort((a, b) =>
+      new Date(a.interventi.data) - new Date(b.interventi.data)
+    )
+
+    const datiExport = sorted.map(item => ({
+      Data: dayjs(item.interventi.data).format("DD/MM/YYYY"),
+      Cliente: item.interventi.clienti?.nome || "",
+      Descrizione: item.interventi.descrizione || "",
+      Operatore: item.operatori?.nome || "",
+      Ore: Number(item.ore)
+    }))
+
+    const totaleOre = datiExport.reduce((sum, r) => sum + r.Ore, 0)
+
+    datiExport.push({})
+    datiExport.push({
+      Data: "TOTALE",
+      Ore: totaleOre
+    })
+
+    const worksheet = XLSX.utils.json_to_sheet(datiExport)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Interventi")
+
+    XLSX.writeFile(
+      workbook,
+      `Interventi_${selectedOperator}_${annoMese}.xlsx`
+    )
   }
 
   return (
@@ -91,6 +152,17 @@ export default function CalendarMonth() {
             </option>
           ))}
         </select>
+
+        <button
+          onClick={exportToExcel}
+          style={{
+            marginLeft: "15px",
+            padding: "6px 12px",
+            cursor: "pointer"
+          }}
+        >
+          Esporta Excel
+        </button>
       </div>
 
       <div
@@ -104,9 +176,7 @@ export default function CalendarMonth() {
           const giornoNumero = String(i + 1).padStart(2, "0")
           const dataCompleta = `${annoMese}-${giornoNumero}`
           const dataFormattata = dayjs(dataCompleta).format("DD/MM/YYYY")
-
-          const trovato = oreMese.find(o => o.data === dataCompleta)
-          const ore = trovato ? trovato.ore : 0
+          const ore = oreMap[dataCompleta] || 0
 
           return (
             <div
@@ -123,11 +193,9 @@ export default function CalendarMonth() {
               <div style={{ fontWeight: "bold" }}>
                 {giornoNumero}
               </div>
-
               <div style={{ fontSize: "12px" }}>
                 {dataFormattata}
               </div>
-
               <div style={{ marginTop: "4px", fontSize: "13px" }}>
                 {ore} h
               </div>

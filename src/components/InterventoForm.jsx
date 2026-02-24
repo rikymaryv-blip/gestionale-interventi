@@ -4,6 +4,8 @@ import {
   updateIntervento,
   salvaOreOperatore,
   salvaMateriale,
+  deleteOreByIntervento,
+  deleteMaterialiByIntervento,
   getClienti,
   getOperatori
 } from "../services/interventiService"
@@ -42,9 +44,37 @@ export default function InterventoForm({
 
   useEffect(() => {
     if (editing) {
+
+      // Intestazione
       setDescrizione(editing.descrizione || "")
       setClienteId(editing.cliente_id || "")
       setData(editing.data || oggi)
+
+      // Operatori
+      if (editing.ore_operatori && editing.ore_operatori.length > 0) {
+        setOperatori(
+          editing.ore_operatori.map(op => ({
+            operatore_id: op.operatore_id,
+            ore: op.ore
+          }))
+        )
+      } else {
+        setOperatori([{ operatore_id: "", ore: 8 }])
+      }
+
+      // Materiali
+      if (editing.materiali_bollettino && editing.materiali_bollettino.length > 0) {
+        setMateriali(
+          editing.materiali_bollettino.map(m => ({
+            codice: m.codice,
+            descrizione: m.descrizione,
+            quantita: m.quantita,
+            prezzo: m.prezzo
+          }))
+        )
+      } else {
+        setMateriali([])
+      }
     }
   }, [editing])
 
@@ -88,18 +118,6 @@ export default function InterventoForm({
     setMateriali(updated)
   }
 
-  function handleKeyDown(e, index) {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      const next = inputRefs.current[index + 1]
-      if (next) {
-        next.focus()
-      } else {
-        handleSubmit()
-      }
-    }
-  }
-
   function reset() {
     setDescrizione("")
     setClienteId("")
@@ -141,20 +159,24 @@ export default function InterventoForm({
 
     const intervento = result.data
 
-    // Salvataggio operatori
-    if (!editing) {
-      for (let op of operatori) {
-        if (op.operatore_id && op.ore) {
-          await salvaOreOperatore(
-            intervento.id,
-            op.operatore_id,
-            op.ore
-          )
-        }
+    // 🔥 SE MODIFICA → PULISCO PRIMA
+    if (editing) {
+      await deleteOreByIntervento(intervento.id)
+      await deleteMaterialiByIntervento(intervento.id)
+    }
+
+    // 🔹 Salvo operatori
+    for (let op of operatori) {
+      if (op.operatore_id && op.ore) {
+        await salvaOreOperatore(
+          intervento.id,
+          op.operatore_id,
+          op.ore
+        )
       }
     }
 
-    // Salvataggio materiali
+    // 🔹 Salvo materiali
     for (let m of materiali) {
       await salvaMateriale(intervento.id, m)
     }
@@ -171,7 +193,6 @@ export default function InterventoForm({
         type="date"
         value={data}
         onChange={(e) => setData(e.target.value)}
-        onKeyDown={(e) => handleKeyDown(e, 0)}
       />
 
       <input
@@ -180,14 +201,12 @@ export default function InterventoForm({
         placeholder="Descrizione"
         value={descrizione}
         onChange={(e) => setDescrizione(e.target.value)}
-        onKeyDown={(e) => handleKeyDown(e, 1)}
       />
 
       <select
         ref={(el) => (inputRefs.current[2] = el)}
         value={clienteId}
         onChange={(e) => setClienteId(e.target.value)}
-        onKeyDown={(e) => handleKeyDown(e, 2)}
       >
         <option value="">Seleziona cliente</option>
         {clienti.map((c) => (

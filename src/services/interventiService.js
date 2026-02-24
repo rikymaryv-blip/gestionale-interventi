@@ -13,7 +13,8 @@ export async function getInterventi() {
       ore_operatori(
         id,
         ore,
-        operatori(nome)
+        operatore_id,
+        operatori(id, nome)
       ),
       materiali_bollettino(
         id,
@@ -176,4 +177,49 @@ export async function salvaMateriale(intervento_id, materiale) {
     }])
 
   return { data, error }
+}
+
+export async function deleteMateriale(id) {
+  const { error } = await supabase
+    .from("materiali_bollettino")
+    .delete()
+    .eq("id", id)
+
+  return { error }
+}
+
+export async function updateMateriale(id, quantita) {
+  const { data, error } = await supabase
+    .from("materiali_bollettino")
+    .update({ quantita })
+    .eq("id", id)
+    .select()
+    .single()
+
+  return { data, error }
+}
+// =========================
+// RESET OPERATORI INTERVENTO
+// =========================
+
+export async function deleteOreByIntervento(intervento_id) {
+  const { error } = await supabase
+    .from("ore_operatori")
+    .delete()
+    .eq("intervento_id", intervento_id)
+
+  return { error }
+}
+
+// =========================
+// RESET MATERIALI INTERVENTO
+// =========================
+
+export async function deleteMaterialiByIntervento(intervento_id) {
+  const { error } = await supabase
+    .from("materiali_bollettino")
+    .delete()
+    .eq("intervento_id", intervento_id)
+
+  return { error }
 }

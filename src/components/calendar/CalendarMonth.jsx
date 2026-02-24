@@ -11,7 +11,7 @@ export default function CalendarMonth() {
   const [oreMese, setOreMese] = useState([])
 
   const oggi = dayjs()
-  const meseCorrente = oggi.format("MMMM YYYY") // es: febbraio 2026
+  const meseCorrente = oggi.format("MMMM YYYY")
   const giorniNelMese = oggi.daysInMonth()
   const annoMese = oggi.format("YYYY-MM")
 
@@ -62,8 +62,11 @@ export default function CalendarMonth() {
     const trovato = oreMese.find(o => o.data === giornoCompleto)
 
     if (!trovato) return "#ffffff"
-    if (trovato.ore < 8) return "#f8d7da" // rosso chiaro
-    return "#d4edda" // verde chiaro
+
+    if (trovato.ore > 8) return "#f8d7da"      // 🔴 rosso se > 8
+    if (trovato.ore === 8) return "#d4edda"   // 🟢 verde se = 8
+
+    return "#fff3cd" // 🟡 giallo se < 8
   }
 
   return (
@@ -102,6 +105,9 @@ export default function CalendarMonth() {
           const dataCompleta = `${annoMese}-${giornoNumero}`
           const dataFormattata = dayjs(dataCompleta).format("DD/MM/YYYY")
 
+          const trovato = oreMese.find(o => o.data === dataCompleta)
+          const ore = trovato ? trovato.ore : 0
+
           return (
             <div
               key={dataCompleta}
@@ -117,8 +123,13 @@ export default function CalendarMonth() {
               <div style={{ fontWeight: "bold" }}>
                 {giornoNumero}
               </div>
+
               <div style={{ fontSize: "12px" }}>
                 {dataFormattata}
+              </div>
+
+              <div style={{ marginTop: "4px", fontSize: "13px" }}>
+                {ore} h
               </div>
             </div>
           )

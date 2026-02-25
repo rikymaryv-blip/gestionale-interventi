@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
+import { useNavigate } from "react-router-dom"
 import InterventoForm from "../components/InterventoForm"
 import InterventoList from "../components/InterventoList"
 
 export default function InterventiPage() {
+
+  const navigate = useNavigate()
 
   const [interventi, setInterventi] = useState([])
   const [refresh, setRefresh] = useState(false)
@@ -65,6 +68,10 @@ export default function InterventiPage() {
     setRefresh(!refresh)
   }
 
+  function handleBollettino(id) {
+    navigate(`/bollettino/${id}`)
+  }
+
   return (
     <div>
 
@@ -81,6 +88,7 @@ export default function InterventiPage() {
         interventi={interventi}
         onDelete={handleDelete}
         onEdit={(i) => setInterventoInModifica(i)}
+        onBollettino={(i) => handleBollettino(i.id)}
       />
 
     </div>

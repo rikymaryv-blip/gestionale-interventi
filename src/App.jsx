@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Link } from "react-router-dom"
 import Dashboard from "./pages/Dashboard"
 import InterventiPage from "./pages/InterventiPage"
 import ClientiPage from "./pages/ClientiPage"
+import BollettinoPage from "./pages/BollettinoPage" // 👈 NUOVO
 
 function App() {
   return (
@@ -28,6 +29,9 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/interventi" element={<InterventiPage />} />
           <Route path="/clienti" element={<ClientiPage />} />
+
+          {/* 👇 NUOVA ROUTE BOLLETTINO */}
+          <Route path="/bollettino/:id" element={<BollettinoPage />} />
         </Routes>
 
       </div>

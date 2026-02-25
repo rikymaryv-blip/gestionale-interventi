@@ -4,7 +4,7 @@ import { deleteMateriale, updateMateriale } from "../services/interventiService"
 
 dayjs.locale("it");
 
-function InterventoList({ interventi, onDelete, onEdit }) {
+function InterventoList({ interventi, onDelete, onEdit, onBollettino }) {
 
   async function handleDeleteMateriale(id) {
     if (!window.confirm("Eliminare materiale?")) return
@@ -135,6 +135,7 @@ function InterventoList({ interventi, onDelete, onEdit }) {
               </div>
             )}
 
+            {/* 🔹 AZIONI */}
             <div style={{ marginTop: "20px" }}>
               <button
                 onClick={() => onEdit(i)}
@@ -143,8 +144,25 @@ function InterventoList({ interventi, onDelete, onEdit }) {
                 Modifica
               </button>
 
-              <button onClick={() => onDelete(i.id)}>
+              <button
+                onClick={() => onDelete(i.id)}
+                style={{ marginRight: "10px" }}
+              >
                 Elimina
+              </button>
+
+              <button
+                onClick={() => onBollettino(i)}
+                style={{
+                  background: "#1890ff",
+                  color: "white",
+                  border: "none",
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  cursor: "pointer"
+                }}
+              >
+                🧾 Bollettino
               </button>
             </div>
           </div>

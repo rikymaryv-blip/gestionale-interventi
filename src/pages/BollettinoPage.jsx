@@ -92,12 +92,10 @@ export default function BollettinoPage() {
     loadAll()
   }
 
-  // 🖨️ STAMPA VELOCE
   function stampa() {
     window.print()
   }
 
-  // 📄 PDF (già tuo)
   async function generaPDF() {
     const res = await fetch(
       "https://olmekymxlopdilkhucvf.supabase.co/functions/v1/genera-bollettino",
@@ -117,72 +115,143 @@ export default function BollettinoPage() {
     a.click()
   }
 
+  // 🎨 STILI
+  const box = {
+    border: "1px solid #ccc",
+    borderRadius: 6,
+    padding: 12,
+    marginTop: 10,
+    background: "#fafafa"
+  }
+
+  const th = {
+    border: "1px solid #ccc",
+    padding: 6,
+    background: "#eee",
+    textAlign: "left"
+  }
+
+  const td = {
+    border: "1px solid #ccc",
+    padding: 6
+  }
+
+  const tdQty = {
+    ...td,
+    textAlign: "center",
+    fontWeight: "bold",
+    width: 60
+  }
+
   return (
     <div style={{ padding: 20, maxWidth: 800, margin: "auto" }}>
 
-      <h1 style={{ textAlign: "center" }}>BOLLETTINO INTERVENTO</h1>
+      <h1 style={{ textAlign: "center", marginBottom: 30 }}>
+        📄 BOLLETTINO INTERVENTO
+      </h1>
 
-      <p><b>Cliente:</b> {intervento?.clienti?.nome}</p>
-      <p><b>Data:</b> {dayjs(intervento?.data).format("DD/MM/YYYY")}</p>
-      <p><b>Descrizione:</b> {intervento?.descrizione}</p>
+      {/* INFO */}
+      <div style={box}>
+        <p><b>Cliente:</b> {intervento?.clienti?.nome}</p>
+        <p><b>Data:</b> {dayjs(intervento?.data).format("DD/MM/YYYY")}</p>
+        <p><b>Descrizione:</b> {intervento?.descrizione}</p>
+      </div>
 
-      <h3>Operatori</h3>
-      {operatori.map((o, i) => (
-        <div key={i}>
-          {o.operatori?.nome} - {o.ore}h
-        </div>
-      ))}
+      {/* OPERATORI */}
+      <div style={box}>
+        <h3>👷 Operatori</h3>
+        {operatori.map((o, i) => (
+          <div key={i}>
+            {o.operatori?.nome} — <b>{o.ore}h</b>
+          </div>
+        ))}
+      </div>
 
-      <h3>Materiali</h3>
-      {materiali.map((m, i) => (
-        <div key={i}>
-          {m.codice} - {m.descrizione} x {m.quantita}
-        </div>
-      ))}
+      {/* MATERIALI */}
+      <div style={box}>
+        <h3>📦 Materiali</h3>
 
-      <h3>Firma Cliente</h3>
+        <table style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          marginTop: 10
+        }}>
+          <thead>
+            <tr>
+              <th style={th}>Q.tà</th>
+              <th style={th}>Codice</th>
+              <th style={th}>Descrizione</th>
+            </tr>
+          </thead>
 
-      {intervento?.firma_cliente && !rifirma ? (
-        <div>
-          <img
-            src={intervento.firma_cliente}
-            style={{ width: "100%", border: "1px solid black" }}
-          />
+          <tbody>
+            {materiali.map((m, i) => (
+              <tr key={i}>
+                <td style={tdQty}>{m.quantita}</td>
+                <td style={td}>{m.codice}</td>
+                <td style={td}>{m.descrizione}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-          <br />
+      {/* FIRMA */}
+      <div style={box}>
+        <h3>✍️ Firma Cliente</h3>
 
-          <button onClick={() => setRifirma(true)}>
-            ✏️ Rifirma
-          </button>
-        </div>
+        {intervento?.firma_cliente && !rifirma ? (
+          <div>
+            <img
+              src={intervento.firma_cliente}
+              style={{
+                width: "100%",
+                border: "1px solid black",
+                borderRadius: 4
+              }}
+            />
 
-      ) : (
-        <div>
-          <canvas
-            ref={canvasRef}
-            width={600}
-            height={150}
-            style={{ border: "1px solid black", width: "100%" }}
-            onMouseDown={startDraw}
-            onMouseUp={endDraw}
-            onMouseMove={draw}
-            onTouchStart={startDraw}
-            onTouchEnd={endDraw}
-            onTouchMove={draw}
-          />
+            <br /><br />
 
-          <br />
+            <button onClick={() => setRifirma(true)}>
+              ✏️ Rifirma
+            </button>
+          </div>
 
-          <button onClick={clearFirma}>Pulisci</button>
-          <button onClick={salvaFirma}>💾 Salva Firma</button>
-        </div>
-      )}
+        ) : (
+          <div>
+            <canvas
+              ref={canvasRef}
+              width={600}
+              height={150}
+              style={{
+                border: "1px solid black",
+                width: "100%",
+                borderRadius: 4
+              }}
+              onMouseDown={startDraw}
+              onMouseUp={endDraw}
+              onMouseMove={draw}
+              onTouchStart={startDraw}
+              onTouchEnd={endDraw}
+              onTouchMove={draw}
+            />
+
+            <br /><br />
+
+            <button onClick={clearFirma}>Pulisci</button>
+            <button onClick={salvaFirma}>💾 Salva Firma</button>
+          </div>
+        )}
+      </div>
 
       <hr />
 
-      <button onClick={stampa}>🖨️ Stampa</button>
-      <button onClick={generaPDF}>📄 PDF</button>
-      <button onClick={() => navigate(-1)}>← Indietro</button>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={stampa}>🖨️ Stampa</button>
+        <button onClick={generaPDF}>📄 PDF</button>
+        <button onClick={() => navigate(-1)}>← Indietro</button>
+      </div>
 
     </div>
   )

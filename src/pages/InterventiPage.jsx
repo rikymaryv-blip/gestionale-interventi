@@ -292,6 +292,15 @@ export default function InterventiPage() {
         ))}
       </select>
 
+{/* 📅 DATA */}
+<input
+  type="date"
+  value={form.data}
+  onChange={e => setForm({ ...form, data: e.target.value })}
+  style={{ display: "block", marginBottom: 10 }}
+/>
+
+
       <input
         placeholder="Descrizione"
         value={form.descrizione}

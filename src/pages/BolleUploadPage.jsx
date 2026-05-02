@@ -32,19 +32,26 @@ export default function BolleUploadPage() {
     setRighe(data || [])
   }
 
-  // 🚀 NUOVA FUNZIONE
   async function importaInIntervento() {
 
     const intervento_id = prompt("Inserisci ID intervento")
-
     if (!intervento_id) return
 
-    for (let r of righe) {
-      await supabase.from("materiali_intervento").insert({
-        intervento_id: intervento_id,
-        materiali_id: r.codice,
-        quantita: r.quantita
-      })
+    const BATCH = 100
+
+    for (let i = 0; i < righe.length; i += BATCH) {
+
+      const chunk = righe.slice(i, i + BATCH)
+
+      await supabase.from("materiali_intervento").insert(
+        chunk.map(r => ({
+          intervento_id: intervento_id,
+          materiali_id: r.codice,
+          quantita: r.quantita
+        }))
+      )
+
+      await new Promise(res => setTimeout(res, 10))
     }
 
     alert("✅ Materiali importati!")
@@ -118,31 +125,43 @@ export default function BolleUploadPage() {
 
       let salvate = 0
 
-      for (const b of bolleArray) {
+      const BATCH = 10 // 🔥 numero bolle per blocco
 
-        const { data: saved, error } = await supabase
-          .from("bolle_acquisto")
-          .insert([{
-            data: b.data,
-            numero_ordine: b.numero_ordine,
-            numero_ddt: b.numero_ddt,
-            nome_carrello: b.nome_carrello
-          }])
-          .select()
-          .single()
+      for (let i = 0; i < bolleArray.length; i += BATCH) {
 
-        if (error) continue
+        const chunk = bolleArray.slice(i, i + BATCH)
 
-        const righeInsert = b.righe.map(r => ({
-          codice: r.codice,
-          descrizione: r.descrizione,
-          quantita: r.quantita,
-          bolla_id: saved.id
-        }))
+        for (const b of chunk) {
 
-        await supabase.from("bolle_righe").insert(righeInsert)
+          const { data: saved, error } = await supabase
+            .from("bolle_acquisto")
+            .insert([{
+              data: b.data,
+              numero_ordine: b.numero_ordine,
+              numero_ddt: b.numero_ddt,
+              nome_carrello: b.nome_carrello
+            }])
+            .select()
+            .single()
 
-        salvate++
+          if (error) continue
+
+          const righeInsert = b.righe.map(r => ({
+            codice: r.codice,
+            descrizione: r.descrizione,
+            quantita: r.quantita,
+            bolla_id: saved.id
+          }))
+
+          await supabase.from("bolle_righe").insert(righeInsert)
+
+          salvate++
+        }
+
+        console.log("Progresso:", i)
+
+        // 🔥 evita blocco browser
+        await new Promise(res => setTimeout(res, 20))
       }
 
       alert("✅ Salvate " + salvate + " bolle")
@@ -195,7 +214,6 @@ export default function BolleUploadPage() {
         <div style={{ marginTop: 20 }}>
           <h3>Dettaglio</h3>
 
-          {/* 🚀 NUOVO BOTTONE */}
           <button onClick={importaInIntervento}>
             🚀 Porta in intervento
           </button>

@@ -15,68 +15,87 @@ export default function ListinoPage() {
 
     setLoading(true)
 
-    const text = await file.text()
-    const righe = text.split("\n")
+    try {
 
-    const articoli = []
-    const mappa = {}
+      const text = await file.text()
+      const righe = text.split("\n")
 
-    for (let riga of righe) {
+      const articoli = []
+      const mappa = {}
 
-      if (!riga.trim()) continue
+      const STEP = 1000
 
-      const descrizione = riga.substring(0, 60).trim()
-      const codice = riga.substring(60, 80).trim()
-      const unita = riga.substring(80, 83).trim()
-      const prezzoRaw = riga.substring(100, 115).trim()
+      for (let i = 0; i < righe.length; i++) {
 
-      const prezzo = parseInt(prezzoRaw || "0") / 100
+        const riga = righe[i]
 
-      if (!codice || !descrizione) continue
+        if (!riga || !riga.trim()) continue
 
-      // evita duplicati (IMPORTANTISSIMO)
-      if (mappa[codice]) continue
+        const descrizione = riga.substring(0, 60).trim()
+        const codice = riga.substring(60, 80).trim()
+        const unita = riga.substring(80, 83).trim()
+        const prezzoRaw = riga.substring(100, 115).trim()
 
-      mappa[codice] = true
+        const prezzo = parseInt(prezzoRaw || "0") / 100
 
-      articoli.push({
-        codice,
-        descrizione,
-        prezzo,
-        unita_misura: unita || "PZ",
-        ean: "",
-        attivo: true
-      })
-    }
+        if (!codice || !descrizione) continue
 
-    if (articoli.length < 50) {
-      alert("File non valido o posizioni errate")
-      setLoading(false)
-      return
-    }
+        if (mappa[codice]) continue
+        mappa[codice] = true
 
-    console.log("ARTICOLI TROVATI:", articoli.length)
+        articoli.push({
+          codice,
+          descrizione,
+          prezzo,
+          unita_misura: unita || "PZ",
+          ean: "",
+          attivo: true
+        })
 
-    // 🔥 NON SVUOTARE (velocizza)
-    // await supabase.from("articoli_listino").delete().neq("id", 0)
+        // 🔥 ogni tot righe lascia respirare browser
+        if (i % STEP === 0) {
+          await new Promise(res => setTimeout(res, 5))
+        }
+      }
 
-    for (let i = 0; i < articoli.length; i += 500) {
-
-      const chunk = articoli.slice(i, i + 500)
-
-      const { error } = await supabase
-        .from("articoli_listino")
-        .upsert(chunk, { onConflict: "codice" })
-
-      if (error) {
-        console.error(error)
-        alert("Errore: " + error.message)
+      if (articoli.length < 50) {
+        alert("File non valido o posizioni errate")
         setLoading(false)
         return
       }
+
+      console.log("ARTICOLI TROVATI:", articoli.length)
+
+      const BATCH = 500
+
+      for (let i = 0; i < articoli.length; i += BATCH) {
+
+        const chunk = articoli.slice(i, i + BATCH)
+
+        const { error } = await supabase
+          .from("articoli_listino")
+          .upsert(chunk, { onConflict: "codice" })
+
+        if (error) {
+          console.error(error)
+          alert("Errore: " + error.message)
+          setLoading(false)
+          return
+        }
+
+        // 🔥 evita freeze durante insert
+        await new Promise(res => setTimeout(res, 10))
+
+        console.log("Caricati:", i)
+      }
+
+      alert("IMPORT COMPLETO ✔")
+
+    } catch (err) {
+      console.error(err)
+      alert("Errore import")
     }
 
-    alert("IMPORT COMPLETO ✔")
     setLoading(false)
   }
 

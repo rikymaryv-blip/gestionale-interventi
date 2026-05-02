@@ -14,6 +14,8 @@ export default function InterventiPage() {
   const [showClienti, setShowClienti] = useState(false)
   const [interventi, setInterventi] = useState([])
 
+  const [editingId, setEditingId] = useState(null)
+
   const [form, setForm] = useState({
     cliente_id: "",
     cliente_nome: "",
@@ -72,23 +74,26 @@ export default function InterventiPage() {
   function aggiungiMateriale(item) {
     setForm(prev => {
       const esistente = prev.materiali.find(m => m.codice === item.codice)
-
-      if (esistente) {
-        return {
-          ...prev,
-          materiali: prev.materiali.map(m =>
-            m.codice === item.codice
-              ? { ...m, quantita: m.quantita + 1 }
-              : m
-          )
-        }
-      }
+      if (esistente) return prev
 
       return {
         ...prev,
         materiali: [...prev.materiali, { ...item, quantita: 1 }]
       }
     })
+  }
+
+  function eliminaMateriale(index) {
+    setForm(prev => ({
+      ...prev,
+      materiali: prev.materiali.filter((_, i) => i !== index)
+    }))
+  }
+
+  function aggiornaQuantitaMateriale(index, valore) {
+    const newMats = [...form.materiali]
+    newMats[index].quantita = Number(valore)
+    setForm(prev => ({ ...prev, materiali: newMats }))
   }
 
   function aggiungiOperatore() {
@@ -109,16 +114,47 @@ export default function InterventiPage() {
     setForm(prev => ({ ...prev, operatori: newOps }))
   }
 
-  function modificaIntervento(i) {
+  async function modificaIntervento(i) {
+
+    setEditingId(i.id)
+
+    const { data: ops } = await supabase
+      .from("ore_operatori")
+      .select("*")
+      .eq("intervento_id", i.id)
+
+    const { data: mats } = await supabase
+      .from("materiali_bollettino")
+      .select("*")
+      .eq("intervento_id", i.id)
+
     setForm({
       cliente_id: i.cliente_id,
       cliente_nome: i.clienti?.nome || "",
       cantiere_id: i.cantiere_id || "",
       data: i.data,
       descrizione: i.descrizione,
-      operatori: [],
-      materiali: []
+
+      operatori: (ops || []).map(o => ({
+        operatore_id: o.operatore_id,
+        ore: o.ore
+      })),
+
+      materiali: (mats || []).map(m => ({
+        codice: m.codice,
+        descrizione: m.descrizione,
+        quantita: m.quantita
+      }))
     })
+
+    if (i.cliente_id) {
+      const { data } = await supabase
+        .from("cantieri")
+        .select("*")
+        .eq("cliente_id", i.cliente_id)
+
+      setCantieri(data || [])
+    }
 
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -128,16 +164,38 @@ export default function InterventiPage() {
     if (!form.cliente_id) return alert("Cliente mancante")
     if (!form.descrizione) return alert("Descrizione mancante")
 
-    const { data: int } = await supabase
-      .from("interventi")
-      .insert([{
-        cliente_id: form.cliente_id,
-        cantiere_id: form.cantiere_id || null,
-        data: form.data,
-        descrizione: form.descrizione
-      }])
-      .select()
-      .single()
+    let int = null
+
+    if (editingId) {
+      await supabase
+        .from("interventi")
+        .update({
+          cliente_id: form.cliente_id,
+          cantiere_id: form.cantiere_id || null,
+          data: form.data,
+          descrizione: form.descrizione
+        })
+        .eq("id", editingId)
+
+      int = { id: editingId }
+
+      await supabase.from("ore_operatori").delete().eq("intervento_id", editingId)
+      await supabase.from("materiali_bollettino").delete().eq("intervento_id", editingId)
+
+    } else {
+      const { data } = await supabase
+        .from("interventi")
+        .insert([{
+          cliente_id: form.cliente_id,
+          cantiere_id: form.cantiere_id || null,
+          data: form.data,
+          descrizione: form.descrizione
+        }])
+        .select()
+        .single()
+
+      int = data
+    }
 
     const ops = form.operatori.map(o => ({
       intervento_id: int.id,
@@ -162,6 +220,8 @@ export default function InterventiPage() {
 
     alert("✅ Intervento salvato")
 
+    setEditingId(null)
+
     setForm({
       cliente_id: "",
       cliente_nome: "",
@@ -181,7 +241,12 @@ export default function InterventiPage() {
 
       <h2>Interventi</h2>
 
-      {/* CLIENTE */}
+      {editingId && (
+        <div style={{ color: "orange", marginBottom: 10 }}>
+          ✏️ MODIFICA INTERVENTO IN CORSO
+        </div>
+      )}
+
       <div style={{ position: "relative" }}>
         <input
           placeholder="Cerca cliente..."
@@ -217,7 +282,6 @@ export default function InterventiPage() {
         )}
       </div>
 
-      {/* CANTIERE */}
       <select
         value={form.cantiere_id}
         onChange={e => setForm({ ...form, cantiere_id: e.target.value })}
@@ -228,14 +292,12 @@ export default function InterventiPage() {
         ))}
       </select>
 
-      {/* DESCRIZIONE */}
       <input
         placeholder="Descrizione"
         value={form.descrizione}
         onChange={e => setForm({ ...form, descrizione: e.target.value })}
       />
 
-      {/* OPERATORI */}
       <h4>Operatori</h4>
 
       {form.operatori.map((op, i) => (
@@ -263,19 +325,47 @@ export default function InterventiPage() {
 
       <button onClick={aggiungiOperatore}>➕ Operatore</button>
 
-      {/* BOLLE */}
       <h4>📦 Bolle</h4>
       <button onClick={() => navigate("/bolle")}>
         Apri gestione bolle
       </button>
 
-      {/* MATERIALI */}
       <h4>Materiali</h4>
       <MaterialeSelector onAdd={aggiungiMateriale} />
 
+      {/* 🔥 SEPARATORE */}
+      <div style={{ marginTop: 10, fontWeight: "bold", color: "#1976d2" }}>
+        📦 Materiali inseriti nell’intervento
+      </div>
+
       {form.materiali.map((m, i) => (
-        <div key={i}>
-          {m.codice} — {m.descrizione} ({m.quantita})
+        <div key={i} style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          border: "2px solid #4CAF50",
+          background: "#f6fff6",
+          padding: 6,
+          marginTop: 4,
+          borderRadius: 4
+        }}>
+          <div style={{ flex: 1 }}>
+            {m.codice} — {m.descrizione}
+          </div>
+
+          <input
+            type="number"
+            value={m.quantita}
+            onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
+            style={{ width: 60 }}
+          />
+
+          <button
+            onClick={() => eliminaMateriale(i)}
+            style={{ background: "red", color: "white" }}
+          >
+            ❌
+          </button>
         </div>
       ))}
 
@@ -290,7 +380,6 @@ export default function InterventiPage() {
         💾 Salva Intervento
       </button>
 
-      {/* LISTA INTERVENTI */}
       <h3 style={{ marginTop: 30 }}>📋 Interventi salvati</h3>
 
       {interventi.map(i => (

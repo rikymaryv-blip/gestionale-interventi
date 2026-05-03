@@ -6,24 +6,19 @@ export default function BolleUploadPage() {
   const [bolle, setBolle] = useState([])
   const [righe, setRighe] = useState([])
   const [selected, setSelected] = useState(null)
-  const [loading, setLoading] = useState(false)
 
   const [interventi, setInterventi] = useState([])
   const [interventoSelezionato, setInterventoSelezionato] = useState("")
+
+  const [filtroOperatore, setFiltroOperatore] = useState("")
+  const [dataDa, setDataDa] = useState("")
+  const [dataA, setDataA] = useState("")
+  const [ricercaCarrello, setRicercaCarrello] = useState("")
 
   useEffect(() => {
     caricaBolle()
     caricaInterventi()
   }, [])
-
-  async function caricaBolle() {
-    const { data } = await supabase
-      .from("bolle_acquisto")
-      .select("*")
-      .order("data", { ascending: false })
-
-    setBolle(data || [])
-  }
 
   async function caricaInterventi() {
     const { data } = await supabase
@@ -32,6 +27,15 @@ export default function BolleUploadPage() {
       .order("data", { ascending: false })
 
     setInterventi(data || [])
+  }
+
+  async function caricaBolle() {
+    const { data } = await supabase
+      .from("bolle_acquisto")
+      .select("*")
+      .order("id", { ascending: false })
+
+    setBolle(data || [])
   }
 
   async function apriBolla(b) {
@@ -46,64 +50,13 @@ export default function BolleUploadPage() {
     setRighe(data || [])
   }
 
-  // 🔥 IMPORT CORRETTO (TAB GIUSTA)
-  async function importaInIntervento() {
-
-    if (!interventoSelezionato) {
-      alert("Seleziona intervento")
-      return
+  function convertiData(d) {
+    if (!d) return null
+    if (d.includes("/")) {
+      const [gg, mm, aaaa] = d.split("/")
+      return `${aaaa}-${mm.padStart(2, "0")}-${gg.padStart(2, "0")}`
     }
-
-    const intervento_id = interventoSelezionato
-    const BATCH = 100
-
-    for (let i = 0; i < righe.length; i += BATCH) {
-
-      const chunk = righe.slice(i, i + BATCH)
-
-      await supabase.from("materiali_bollettino").insert(
-        chunk.map(r => ({
-          intervento_id: intervento_id,
-          codice: r.codice,
-          descrizione: r.descrizione,
-          quantita: r.quantita
-        }))
-      )
-
-      await new Promise(res => setTimeout(res, 10))
-    }
-
-    alert("✅ Materiali importati!")
-
-    // opzionale: ricarica
-    setSelected(null)
-    setRighe([])
-  }
-
-  // 🔥 PARSER CSV SICURO
-  function splitCSV(line, sep) {
-    const result = []
-    let current = ""
-    let insideQuotes = false
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i]
-
-      if (char === '"') {
-        insideQuotes = !insideQuotes
-        continue
-      }
-
-      if (char === sep && !insideQuotes) {
-        result.push(current)
-        current = ""
-      } else {
-        current += char
-      }
-    }
-
-    result.push(current)
-    return result
+    return d
   }
 
   async function handleFile(e) {
@@ -111,111 +64,134 @@ export default function BolleUploadPage() {
     const file = e.target.files[0]
     if (!file) return
 
-    setLoading(true)
+    const text = await new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = (ev) => resolve(ev.target.result)
+      reader.readAsText(file, "ISO-8859-1")
+    })
 
-    try {
+    const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim())
+    const sep = lines[0].includes(";") ? ";" : ","
+    const split = (line) => line.split(sep).map(v => v.trim())
 
-      const text = await file.text()
-      const lines = text.split("\n").filter(l => l.trim())
+    const grouped = {}
 
-      const sep = lines[0].includes(";") ? ";" : ","
+    for (let i = 1; i < lines.length; i++) {
 
-      const headers = splitCSV(lines[0], sep).map(h => h.trim())
+      const v = split(lines[i])
 
-      const iOrdine = headers.findIndex(h => h.toLowerCase().includes("ordine"))
-      const iDDT = headers.findIndex(h => h.toLowerCase().includes("ddt"))
-      const iData = headers.findIndex(h => h.toLowerCase().includes("data"))
-      const iCarrello = headers.findIndex(h => h.toLowerCase().includes("carrello"))
+      const ordine = (v[3] || "").trim()
+      let ddt = (v[12] || "").trim()
 
-      const iCod = headers.findIndex(h => h.toLowerCase().includes("cod"))
-      const iDesc = headers.findIndex(h => h.toLowerCase().includes("descr"))
-      const iQta = headers.findIndex(h => h.toLowerCase().includes("quant"))
+      const data = convertiData(v[0])
+      const creatore = v[9] || ""
+      const nomeCarrello = v[4] || ""
 
-      const grouped = {}
+      if (!ordine) continue
+      if (!ddt) ddt = "NO_DDT_" + ordine
 
-      for (let i = 1; i < lines.length; i++) {
+      const key = ordine + "_" + ddt
 
-        const values = splitCSV(lines[i], sep)
-
-        const ordine = values[iOrdine]
-        if (!ordine) continue
-
-        if (!grouped[ordine]) {
-          grouped[ordine] = {
-            data: parseDate(values[iData]),
-            numero_ordine: String(ordine),
-            numero_ddt: String(values[iDDT] || ""),
-            nome_carrello: values[iCarrello] || "",
-            righe: []
-          }
+      if (!grouped[key]) {
+        grouped[key] = {
+          numero_ordine: ordine,
+          numero_ddt: ddt,
+          data,
+          creatore,
+          nome_carrello: nomeCarrello,
+          righe: []
         }
-
-        grouped[ordine].righe.push({
-          codice: values[iCod] || "",
-          descrizione: values[iDesc] || "",
-          quantita: Number(String(values[iQta]).replace(",", ".")) || 0
-        })
       }
 
-      const bolleArray = Object.values(grouped)
+      grouped[key].righe.push({
+        codice: v[14] || "",
+        descrizione: v[13] || "",
+        quantita: Number(v[16]) || 0
+      })
+    }
 
-      let salvate = 0
-      const BATCH = 10
+    let salvate = 0
 
-      for (let i = 0; i < bolleArray.length; i += BATCH) {
+    for (const b of Object.values(grouped)) {
 
-        const chunk = bolleArray.slice(i, i + BATCH)
+      const { data: saved, error } = await supabase
+        .from("bolle_acquisto")
+        .insert([{
+          numero_ordine: b.numero_ordine,
+          numero_ddt: b.numero_ddt,
+          creatore_carrello: b.creatore || null,
+          nome_carrello: b.nome_carrello || null,
+          usata: false,
+          data: b.data || null
+        }])
+        .select()
+        .single()
 
-        for (const b of chunk) {
+      if (error) continue
 
-          const { data: saved, error } = await supabase
-            .from("bolle_acquisto")
-            .insert([{
-              data: b.data,
-              numero_ordine: b.numero_ordine,
-              numero_ddt: b.numero_ddt,
-              nome_carrello: b.nome_carrello
-            }])
-            .select()
-            .single()
-
-          if (error) continue
-
-          const righeInsert = b.righe.map(r => ({
-            codice: r.codice,
-            descrizione: r.descrizione,
-            quantita: r.quantita,
+      await supabase
+        .from("bolle_righe")
+        .insert(
+          b.righe.map(r => ({
+            ...r,
             bolla_id: saved.id
           }))
+        )
 
-          await supabase.from("bolle_righe").insert(righeInsert)
-
-          salvate++
-        }
-
-        await new Promise(res => setTimeout(res, 20))
-      }
-
-      alert("✅ Salvate " + salvate + " bolle")
-
-      caricaBolle()
-
-    } catch (err) {
-      console.error(err)
-      alert("Errore file")
+      salvate++
     }
 
-    setLoading(false)
+    alert("Caricate " + salvate + " bolle")
+    caricaBolle()
   }
 
-  function parseDate(d) {
-    if (!d) return null
-    if (d.includes("/")) {
-      const p = d.split("/")
-      return `${p[2]}-${p[1]}-${p[0]}`
+  // 🔒 IMPORT (NON TOCCATO)
+  async function importaInIntervento() {
+
+    if (selected?.usata) {
+      alert("⚠️ Questa bolla è già stata importata")
+      return
     }
-    return null
+
+    if (!interventoSelezionato) {
+      alert("Seleziona intervento")
+      return
+    }
+
+    for (let r of righe) {
+      await supabase.from("materiali_bollettino").insert({
+        intervento_id: interventoSelezionato,
+        codice: r.codice,
+        descrizione: r.descrizione,
+        quantita: r.quantita
+      })
+    }
+
+    await supabase
+      .from("bolle_acquisto")
+      .update({ usata: true })
+      .eq("id", selected.id)
+
+    alert("IMPORT OK")
+
+    setSelected(null)
+    setRighe([])
+    caricaBolle()
   }
+
+  // 🔥 AGGIUNTA: TORNA INDIETRO
+  async function annullaImportazione() {
+    await supabase
+      .from("bolle_acquisto")
+      .update({ usata: false })
+      .eq("id", selected.id)
+
+    alert("Bolla riattivata")
+    caricaBolle()
+  }
+
+  const operatori = [...new Set(bolle.map(b => b.creatore_carrello).filter(Boolean))]
+  const carrelli = [...new Set(bolle.map(b => b.nome_carrello).filter(Boolean))]
 
   return (
     <div style={{ padding: 20 }}>
@@ -223,37 +199,90 @@ export default function BolleUploadPage() {
       <h2>📦 Archivio Bolle</h2>
 
       <input type="file" accept=".csv" onChange={handleFile} />
-      {loading && <p>Caricamento...</p>}
+
+      {/* FILTRI */}
+      <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+
+        <select value={filtroOperatore} onChange={(e) => setFiltroOperatore(e.target.value)}>
+          <option value="">Tutti operatori</option>
+          {operatori.map(op => <option key={op}>{op}</option>)}
+        </select>
+
+        <span>Da:</span>
+        <input type="date" value={dataDa} onChange={(e) => setDataDa(e.target.value)} />
+
+        <span>A:</span>
+        <input type="date" value={dataA} onChange={(e) => setDataA(e.target.value)} />
+
+        <div style={{ position: "relative" }}>
+          <input
+            placeholder="🔍 Cerca carrello..."
+            value={ricercaCarrello}
+            onChange={(e) => setRicercaCarrello(e.target.value)}
+          />
+
+          {ricercaCarrello && (
+            <div style={{ position: "absolute", background: "white", border: "1px solid #ccc" }}>
+              {carrelli
+                .filter(c => c.toLowerCase().includes(ricercaCarrello.toLowerCase()))
+                .slice(0, 10)
+                .map((c, i) => (
+                  <div key={i} onClick={() => setRicercaCarrello(c)}>
+                    {c}
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+
+        <button onClick={() => {
+          setFiltroOperatore("")
+          setDataDa("")
+          setDataA("")
+          setRicercaCarrello("")
+        }}>
+          Reset
+        </button>
+
+      </div>
 
       <hr />
 
-      {bolle.map(b => (
-        <div
-          key={b.id}
-          onClick={() => apriBolla(b)}
-          style={{
-            border: "1px solid #ccc",
-            padding: 10,
-            marginTop: 5,
-            cursor: "pointer"
-          }}
-        >
-          <b>{b.numero_ordine}</b> | DDT: {b.numero_ddt}
-        </div>
-      ))}
+      {bolle
+        .filter(b => {
+          const m1 = !filtroOperatore || b.creatore_carrello === filtroOperatore
+          const m2 = (!dataDa || b.data >= dataDa) && (!dataA || b.data <= dataA)
+          const m3 = !ricercaCarrello || (b.nome_carrello || "").toLowerCase().includes(ricercaCarrello.toLowerCase())
+          return m1 && m2 && m3
+        })
+        .map(b => (
+          <div
+            key={b.id}
+            onClick={() => apriBolla(b)}
+            style={{
+              border: b.usata ? "2px solid green" : "1px solid #ccc",
+              background: b.usata ? "#e8f5e9" : "white",
+              padding: 10,
+              marginTop: 5,
+              cursor: "pointer"
+            }}
+          >
+            <b>{b.numero_ordine}</b> | DDT: {b.numero_ddt}
+            <div>📅 {b.data}</div>
+            <div>👤 {b.creatore_carrello}</div>
+            <div>📦 {b.nome_carrello}</div>
+            {b.usata && <span>✅ USATA</span>}
+          </div>
+        ))}
 
       {selected && (
         <div style={{ marginTop: 20 }}>
-
           <h3>Dettaglio</h3>
 
-          <select
-            value={interventoSelezionato}
-            onChange={(e) => setInterventoSelezionato(e.target.value)}
-            style={{ marginBottom: 10 }}
-          >
-            <option value="">Seleziona intervento</option>
+          <button onClick={() => setSelected(null)}>❌ Chiudi</button>
 
+          <select value={interventoSelezionato} onChange={(e) => setInterventoSelezionato(e.target.value)}>
+            <option value="">Seleziona intervento</option>
             {interventi.map(i => (
               <option key={i.id} value={i.id}>
                 {i.data} - {i.clienti?.nome}
@@ -261,18 +290,21 @@ export default function BolleUploadPage() {
             ))}
           </select>
 
-          <br />
-
-          <button onClick={importaInIntervento}>
-            🚀 Porta in intervento
+          <button onClick={importaInIntervento} disabled={selected?.usata}>
+            🚀 Importa
           </button>
+
+          {selected?.usata && (
+            <button onClick={annullaImportazione}>
+              ↩ Torna indietro
+            </button>
+          )}
 
           {righe.map((r, i) => (
             <div key={i}>
-              {r.codice} — {r.descrizione} ({r.quantita})
+              {r.codice} - {r.descrizione} ({r.quantita})
             </div>
           ))}
-
         </div>
       )}
 

@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react"
 import dayjs from "dayjs"
 import { supabase } from "../supabaseClient"
-import * as XLSX from "xlsx"
+import { useNavigate } from "react-router-dom"
 
 export default function FatturePage() {
 
   const [clientiMap, setClientiMap] = useState({})
-  const [codiceAccesso, setCodiceAccesso] = useState("") // ✅ FIX
+  const navigate = useNavigate()
 
   useEffect(() => {
     load()
@@ -21,23 +21,27 @@ export default function FatturePage() {
         data,
         descrizione,
         clienti(nome),
-        cantieri(nome),
         ore_operatori(
           ore,
-          operatori(nome)
+          operatore_id
         ),
-        materiali_bollettino(codice, descrizione, quantita)
+        materiali_bollettino(
+          codice,
+          descrizione,
+          quantita
+        )
       `)
-      .is("fattura_id", null)
+      .eq("stato", "attivo")
 
     if (error) {
-      console.error(error)
+      console.error("ERRORE LOAD:", error)
+      alert("Errore caricamento interventi")
       return
     }
 
     const map = {}
 
-    ;(data || []).forEach(i => {
+    data?.forEach(i => {
       const nome = i.clienti?.nome || "Senza nome"
 
       if (!map[nome]) map[nome] = []
@@ -47,90 +51,92 @@ export default function FatturePage() {
     setClientiMap(map)
   }
 
+  // 🔥 FUNZIONE PER PRENDERE NOME OPERATORE
+  async function getNomeOperatore(id) {
+    if (!id) return "Operatore"
+
+    const { data } = await supabase
+      .from("operatori")
+      .select("nome")
+      .eq("id", id)
+      .single()
+
+    return data?.nome || "Operatore"
+  }
+
   async function creaFattura(cliente) {
 
-    const lista = clientiMap[cliente] || []
+    const lista = clientiMap[cliente]
 
-    if (lista.length === 0) {
+    if (!lista || lista.length === 0) {
       alert("Nessun intervento")
       return
     }
 
+    // CREA FATTURA
     const { data: fattura, error } = await supabase
       .from("fatture")
       .insert([{
-        cliente: cliente,
-        data: new Date().toISOString(),
-        numero: Date.now()
+        cliente_nome: cliente,
+        data: new Date().toISOString()
       }])
       .select()
       .single()
 
-    if (error) {
-      alert(error.message)
+    if (error || !fattura) {
+      console.error(error)
+      alert("Errore creazione fattura")
       return
     }
 
+    // 🔥 INSERIMENTO RIGHE
     for (const i of lista) {
 
-      const { error } = await supabase
-        .from("fatture_dettaglio")
-        .insert([{
+      // 👉 OPERATORI CON NOME REALE
+      for (const o of i.ore_operatori || []) {
+
+        const nomeOperatore = await getNomeOperatore(o.operatore_id)
+
+        await supabase.from("fatture_righe").insert({
           fattura_id: fattura.id,
-          intervento_id: i.id,
           data: i.data,
           descrizione: i.descrizione,
-          cantiere: i.cantieri?.nome || ""
-        }])
+          operatore: nomeOperatore,
+          ore: o.ore
+        })
+      }
 
-      if (error) {
-        alert(error.message)
-        return
+      // 👉 MATERIALI CON CODICE
+      for (const m of i.materiali_bollettino || []) {
+
+        await supabase.from("fatture_righe").insert({
+          fattura_id: fattura.id,
+          codice: m.codice || "",
+          materiale: m.descrizione || "",
+          quantita: m.quantita || 0
+        })
       }
     }
 
-    const ids = lista.map(i => i.id)
-
+    // ARCHIVIA INTERVENTI
     await supabase
       .from("interventi")
-      .update({
-        fattura_id: fattura.id,
-        stato: "archiviato"
-      })
-      .in("id", ids)
+      .update({ stato: "archiviato" })
+      .in("id", lista.map(i => i.id))
 
-    const rows = []
-    rows.push(["Cliente", cliente])
+    alert("✅ Fattura salvata")
 
-    lista.forEach(i => {
-      rows.push([
-        dayjs(i.data).format("DD/MM/YYYY"),
-        i.descrizione
-      ])
-    })
-
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Fattura")
-
-    XLSX.writeFile(wb, `fattura-${cliente}.xlsx`)
-
-    alert("Fattura creata ✔")
-
-    load()
+    navigate("/storico-fatture")
   }
 
   return (
     <div style={{ padding: 20 }}>
+
       <h2>💰 Fatture</h2>
 
-      <input
-        type="password"
-        placeholder="Codice accesso"
-        value={codiceAccesso}
-        onChange={(e) => setCodiceAccesso(e.target.value)}
-        style={{ marginBottom: 10 }}
-      />
+      <button onClick={() => navigate("/storico-fatture")}>
+        📜 Vai allo Storico
+      </button>
 
       {Object.keys(clientiMap).length === 0 && (
         <p>Nessun intervento da fatturare</p>
@@ -140,14 +146,28 @@ export default function FatturePage() {
 
         const lista = clientiMap[cliente]
 
+        const totaleOre = lista.reduce((tot, i) =>
+          tot + (i.ore_operatori || []).reduce((t, o) => t + (o.ore || 0), 0)
+        , 0)
+
+        const totaleMateriali = lista.reduce((tot, i) =>
+          tot + (i.materiali_bollettino || []).reduce((t, m) => t + (m.quantita || 0), 0)
+        , 0)
+
         return (
           <div key={cliente} style={{
-            border: "1px solid black",
+            border: "1px solid #ccc",
             marginTop: 10,
-            padding: 10
+            padding: 10,
+            borderRadius: 6
           }}>
 
             <h3>{cliente}</h3>
+
+            <div>👷 Ore totali: {totaleOre}</div>
+            <div>📦 Materiali totali: {totaleMateriali}</div>
+
+            <hr />
 
             {lista.map(i => (
               <div key={i.id}>
@@ -155,21 +175,16 @@ export default function FatturePage() {
               </div>
             ))}
 
-            <button
-              onClick={() => {
-                if (codiceAccesso !== "3125") {
-                  alert("Accesso negato")
-                  return
-                }
-                creaFattura(cliente)
-              }}
-            >
-              Crea Fattura
+            <br />
+
+            <button onClick={() => creaFattura(cliente)}>
+              💾 Crea Fattura
             </button>
 
           </div>
         )
       })}
+
     </div>
   )
 }

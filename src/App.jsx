@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-router-dom"
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from "react-router-dom"
 import { useState } from "react"
 
 // PAGINE
@@ -14,49 +14,66 @@ import ArchivioClientePage from "./pages/ArchivioClientePage"
 import FatturaDettaglioPage from "./pages/FatturaDettaglioPage"
 import OperatoriPage from "./pages/OperatoriPage"
 import InterventiStorico from "./pages/InterventiStorico"
-
-
-// 🆕 NUOVA PAGINA BOLLE
+import OreMesePage from "./pages/OreMesePage"
 import BolleUploadPage from "./pages/BolleUploadPage"
-
-// TEST
 import TestCantieri from "./TestCantieri"
+
+// 🔥 NUOVO
+import StoricoInterventiPage from "./pages/StoricoInterventiPage"
 
 // MENU
 function Menu() {
   const [openFatt, setOpenFatt] = useState(false)
   const [openListino, setOpenListino] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
+
+  function btn(path, label, icon) {
+    const active = location.pathname === path
+
+    return (
+      <button
+        onClick={() => navigate(path)}
+        style={{
+          ...menuBtn,
+          background: active ? "#1976d2" : "white",
+          color: active ? "white" : "black",
+          border: active ? "none" : "1px solid #ccc"
+        }}
+      >
+        {icon} {label}
+      </button>
+    )
+  }
 
   return (
     <div style={menuBar}>
 
-      <button onClick={() => navigate("/")}>📅 Calendario</button>
-      <button onClick={() => navigate("/interventi")}>🧾 Interventi</button>
-      <button onClick={() => navigate("/clienti")}>👤 Clienti</button>
+      {btn("/", "Calendario", "📅")}
+      {btn("/interventi", "Interventi", "🧾")}
+      {btn("/clienti", "Clienti", "👤")}
 
-      {/* 🆕 BOLLE */}
+      {/* 🔥 NUOVO BOTTONE */}
+      {btn("/storico-interventi", "Storico Interventi", "📂")}
+
+      {/* BOLLE */}
       <button
+        style={menuBtn}
         onClick={() => {
           const codice = prompt("Inserisci codice accesso")
-          if (codice !== "1234") {
-            alert("Accesso negato")
-            return
-          }
+          if (codice !== "1234") return alert("Accesso negato")
           navigate("/bolle")
         }}
       >
         📥 Bolle
       </button>
 
-      {/* 🔴 FATTURAZIONE */}
+      {/* FATTURAZIONE */}
       <button
+        style={menuBtn}
         onClick={() => {
           const codice = prompt("Inserisci codice accesso")
-          if (codice !== "1234") {
-            alert("Accesso negato")
-            return
-          }
+          if (codice !== "1234") return alert("Accesso negato")
           setOpenFatt(!openFatt)
         }}
       >
@@ -64,23 +81,18 @@ function Menu() {
       </button>
 
       {openFatt && (
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button onClick={() => navigate("/fatture")}>Fatture</button>
-          <button onClick={() => navigate("/storico-fatture")}>Storico</button>
-          <button onClick={() => navigate("/archivio-cliente")}>Archivio Cliente</button>
-          <button onClick={() => navigate("/archivio")}>Archivio</button>
-          <button onClick={() => navigate("/operatori")}>👷 Operatori</button>
+        <div style={subMenu}>
+          {btn("/fatture", "Fatture", "💰")}
+          {btn("/storico-fatture", "Storico", "📜")}
         </div>
       )}
 
-      {/* 🔴 LISTINO PROTETTO */}
+      {/* LISTINO */}
       <button
+        style={menuBtn}
         onClick={() => {
           const codice = prompt("Inserisci codice accesso")
-          if (codice !== "1234") {
-            alert("Accesso negato")
-            return
-          }
+          if (codice !== "1234") return alert("Accesso negato")
           setOpenListino(!openListino)
         }}
       >
@@ -88,8 +100,8 @@ function Menu() {
       </button>
 
       {openListino && (
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => navigate("/listino")}>Gestione Listino</button>
+        <div style={subMenu}>
+          {btn("/listino", "Gestione", "📦")}
         </div>
       )}
 
@@ -123,13 +135,13 @@ export default function App() {
           <Route path="/archivio-cliente" element={<ArchivioClientePage />} />
           <Route path="/fattura/:id" element={<FatturaDettaglioPage />} />
           <Route path="/operatori" element={<OperatoriPage />} />
-<Route path="/storico" element={<InterventiStorico />} />
-
-
-          {/* 🆕 ROUTE BOLLE */}
+          <Route path="/storico" element={<InterventiStorico />} />
+          <Route path="/ore-mese" element={<OreMesePage />} />
           <Route path="/bolle" element={<BolleUploadPage />} />
-
           <Route path="/test" element={<TestCantieri />} />
+
+          {/* 🔥 NUOVA ROUTE */}
+          <Route path="/storico-interventi" element={<StoricoInterventiPage />} />
         </Routes>
       </div>
 
@@ -137,12 +149,27 @@ export default function App() {
   )
 }
 
-// STILE MENU
+// STILI
 const menuBar = {
   display: "flex",
   gap: 10,
   padding: 10,
   borderBottom: "1px solid #ccc",
   background: "#f5f5f5",
+  flexWrap: "wrap"
+}
+
+const menuBtn = {
+  padding: "8px 12px",
+  borderRadius: 6,
+  cursor: "pointer",
+  border: "1px solid #ccc",
+  background: "white"
+}
+
+const subMenu = {
+  display: "flex",
+  gap: 8,
+  marginLeft: 10,
   flexWrap: "wrap"
 }

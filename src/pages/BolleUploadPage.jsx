@@ -6,17 +6,24 @@ export default function BolleUploadPage() {
   const [bolle, setBolle] = useState([])
   const [righe, setRighe] = useState([])
   const [selected, setSelected] = useState(null)
-  const [search, setSearch] = useState("")
+  const [loading, setLoading] = useState(false)
 
   const [interventi, setInterventi] = useState([])
   const [interventoSelezionato, setInterventoSelezionato] = useState("")
 
-  const [mostraArchiviate, setMostraArchiviate] = useState(false)
-
   useEffect(() => {
     caricaBolle()
     caricaInterventi()
-  }, [mostraArchiviate])
+  }, [])
+
+  async function caricaBolle() {
+    const { data } = await supabase
+      .from("bolle_acquisto")
+      .select("*")
+      .order("data", { ascending: false })
+
+    setBolle(data || [])
+  }
 
   async function caricaInterventi() {
     const { data } = await supabase
@@ -25,16 +32,6 @@ export default function BolleUploadPage() {
       .order("data", { ascending: false })
 
     setInterventi(data || [])
-  }
-
-  async function caricaBolle() {
-    const { data } = await supabase
-      .from("bolle_acquisto")
-      .select("*")
-      .eq("usata", mostraArchiviate)
-      .order("data", { ascending: false })
-
-    setBolle(data || [])
   }
 
   async function apriBolla(b) {
@@ -49,7 +46,7 @@ export default function BolleUploadPage() {
     setRighe(data || [])
   }
 
-  // 🚀 IMPORT + ARCHIVIA
+  // 🔥 IMPORT CORRETTO (TAB GIUSTA)
   async function importaInIntervento() {
 
     if (!interventoSelezionato) {
@@ -57,62 +54,180 @@ export default function BolleUploadPage() {
       return
     }
 
-    for (let r of righe) {
-      await supabase.from("materiali_bollettino").insert({
-        intervento_id: interventoSelezionato,
-        codice: r.codice,
-        descrizione: r.descrizione,
-        quantita: r.quantita
-      })
+    const intervento_id = interventoSelezionato
+    const BATCH = 100
+
+    for (let i = 0; i < righe.length; i += BATCH) {
+
+      const chunk = righe.slice(i, i + BATCH)
+
+      await supabase.from("materiali_bollettino").insert(
+        chunk.map(r => ({
+          intervento_id: intervento_id,
+          codice: r.codice,
+          descrizione: r.descrizione,
+          quantita: r.quantita
+        }))
+      )
+
+      await new Promise(res => setTimeout(res, 10))
     }
 
-    // 🔥 ARCHIVIA
-    await supabase
-      .from("bolle_acquisto")
-      .update({ usata: true })
-      .eq("id", selected.id)
+    alert("✅ Materiali importati!")
 
-    alert("IMPORT OK")
-
+    // opzionale: ricarica
     setSelected(null)
     setRighe([])
-    caricaBolle()
   }
 
-  // 🔍 RICERCA LOCALE
-  const bolleFiltrate = bolle.filter(b =>
-    !search ||
-    b.numero_ordine?.toString().includes(search) ||
-    b.numero_ddt?.toString().includes(search) ||
-    b.nome_carrello?.toLowerCase().includes(search.toLowerCase()) ||
-    b.data?.includes(search)
-  )
+  // 🔥 PARSER CSV SICURO
+  function splitCSV(line, sep) {
+    const result = []
+    let current = ""
+    let insideQuotes = false
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]
+
+      if (char === '"') {
+        insideQuotes = !insideQuotes
+        continue
+      }
+
+      if (char === sep && !insideQuotes) {
+        result.push(current)
+        current = ""
+      } else {
+        current += char
+      }
+    }
+
+    result.push(current)
+    return result
+  }
+
+  async function handleFile(e) {
+
+    const file = e.target.files[0]
+    if (!file) return
+
+    setLoading(true)
+
+    try {
+
+      const text = await file.text()
+      const lines = text.split("\n").filter(l => l.trim())
+
+      const sep = lines[0].includes(";") ? ";" : ","
+
+      const headers = splitCSV(lines[0], sep).map(h => h.trim())
+
+      const iOrdine = headers.findIndex(h => h.toLowerCase().includes("ordine"))
+      const iDDT = headers.findIndex(h => h.toLowerCase().includes("ddt"))
+      const iData = headers.findIndex(h => h.toLowerCase().includes("data"))
+      const iCarrello = headers.findIndex(h => h.toLowerCase().includes("carrello"))
+
+      const iCod = headers.findIndex(h => h.toLowerCase().includes("cod"))
+      const iDesc = headers.findIndex(h => h.toLowerCase().includes("descr"))
+      const iQta = headers.findIndex(h => h.toLowerCase().includes("quant"))
+
+      const grouped = {}
+
+      for (let i = 1; i < lines.length; i++) {
+
+        const values = splitCSV(lines[i], sep)
+
+        const ordine = values[iOrdine]
+        if (!ordine) continue
+
+        if (!grouped[ordine]) {
+          grouped[ordine] = {
+            data: parseDate(values[iData]),
+            numero_ordine: String(ordine),
+            numero_ddt: String(values[iDDT] || ""),
+            nome_carrello: values[iCarrello] || "",
+            righe: []
+          }
+        }
+
+        grouped[ordine].righe.push({
+          codice: values[iCod] || "",
+          descrizione: values[iDesc] || "",
+          quantita: Number(String(values[iQta]).replace(",", ".")) || 0
+        })
+      }
+
+      const bolleArray = Object.values(grouped)
+
+      let salvate = 0
+      const BATCH = 10
+
+      for (let i = 0; i < bolleArray.length; i += BATCH) {
+
+        const chunk = bolleArray.slice(i, i + BATCH)
+
+        for (const b of chunk) {
+
+          const { data: saved, error } = await supabase
+            .from("bolle_acquisto")
+            .insert([{
+              data: b.data,
+              numero_ordine: b.numero_ordine,
+              numero_ddt: b.numero_ddt,
+              nome_carrello: b.nome_carrello
+            }])
+            .select()
+            .single()
+
+          if (error) continue
+
+          const righeInsert = b.righe.map(r => ({
+            codice: r.codice,
+            descrizione: r.descrizione,
+            quantita: r.quantita,
+            bolla_id: saved.id
+          }))
+
+          await supabase.from("bolle_righe").insert(righeInsert)
+
+          salvate++
+        }
+
+        await new Promise(res => setTimeout(res, 20))
+      }
+
+      alert("✅ Salvate " + salvate + " bolle")
+
+      caricaBolle()
+
+    } catch (err) {
+      console.error(err)
+      alert("Errore file")
+    }
+
+    setLoading(false)
+  }
+
+  function parseDate(d) {
+    if (!d) return null
+    if (d.includes("/")) {
+      const p = d.split("/")
+      return `${p[2]}-${p[1]}-${p[0]}`
+    }
+    return null
+  }
 
   return (
     <div style={{ padding: 20 }}>
 
       <h2>📦 Archivio Bolle</h2>
 
-      {/* 🔘 TOGGLE */}
-      <button
-        onClick={() => setMostraArchiviate(!mostraArchiviate)}
-        style={{ marginBottom: 10 }}
-      >
-        {mostraArchiviate ? "Mostra Attive" : "Mostra Archiviate"}
-      </button>
-
-      {/* 🔍 RICERCA */}
-      <input
-        placeholder="Cerca ordine, DDT, carrello, data..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "100%", padding: 8 }}
-      />
+      <input type="file" accept=".csv" onChange={handleFile} />
+      {loading && <p>Caricamento...</p>}
 
       <hr />
 
-      {/* 📋 LISTA */}
-      {bolleFiltrate.map(b => (
+      {bolle.map(b => (
         <div
           key={b.id}
           onClick={() => apriBolla(b)}
@@ -124,12 +239,9 @@ export default function BolleUploadPage() {
           }}
         >
           <b>{b.numero_ordine}</b> | DDT: {b.numero_ddt}
-          <div>{b.nome_carrello}</div>
-          <div style={{ fontSize: 12 }}>{b.data}</div>
         </div>
       ))}
 
-      {/* 📦 DETTAGLIO */}
       {selected && (
         <div style={{ marginTop: 20 }}>
 
@@ -138,6 +250,7 @@ export default function BolleUploadPage() {
           <select
             value={interventoSelezionato}
             onChange={(e) => setInterventoSelezionato(e.target.value)}
+            style={{ marginBottom: 10 }}
           >
             <option value="">Seleziona intervento</option>
 
@@ -148,17 +261,17 @@ export default function BolleUploadPage() {
             ))}
           </select>
 
+          <br />
+
           <button onClick={importaInIntervento}>
-            🚀 Importa in intervento
+            🚀 Porta in intervento
           </button>
 
-          <div style={{ marginTop: 10 }}>
-            {righe.map((r, i) => (
-              <div key={i}>
-                {r.codice} - {r.descrizione} ({r.quantita})
-              </div>
-            ))}
-          </div>
+          {righe.map((r, i) => (
+            <div key={i}>
+              {r.codice} — {r.descrizione} ({r.quantita})
+            </div>
+          ))}
 
         </div>
       )}

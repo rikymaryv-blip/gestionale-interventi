@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react"
-import { useParams } from "react-router-dom"
-import dayjs from "dayjs"
+import { useParams, useNavigate } from "react-router-dom"
 import { supabase } from "../supabaseClient"
+import dayjs from "dayjs"
 
 export default function FatturaDettaglioPage() {
 
   const { id } = useParams()
+  const navigate = useNavigate()
 
   const [fattura, setFattura] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [righe, setRighe] = useState([])
 
   useEffect(() => {
     load()
@@ -16,101 +17,165 @@ export default function FatturaDettaglioPage() {
 
   async function load() {
 
-    console.log("ID FATTURA:", id)
-
-    const { data, error } = await supabase
+    const { data: f } = await supabase
       .from("fatture")
-      .select(`
-        id,
-        numero,
-        cliente,
-        data,
-        fatture_dettaglio (
-          id,
-          intervento_id,
-          data,
-          descrizione,
-          cantiere,
-          interventi (
-            id,
-            ore_operatori (
-              ore,
-              operatori (nome)
-            ),
-            materiali_bollettino (
-              codice,
-              descrizione,
-              quantita
-            )
-          )
-        )
-      `)
+      .select("*")
       .eq("id", id)
       .single()
 
-    console.log("RISULTATO:", data)
+    const { data: r } = await supabase
+      .from("fatture_righe")
+      .select("*")
+      .eq("fattura_id", id)
 
-    if (error || !data) {
-      console.error("ERRORE:", error)
-      setLoading(false)
-      return
-    }
-
-    setFattura(data)
-    setLoading(false)
+    setFattura(f)
+    setRighe(r || [])
   }
 
-  if (loading) return <p>Caricamento...</p>
+  function stampaPDF() {
+    window.print()
+  }
 
-  if (!fattura) return <p>Fattura non trovata</p>
+  const operatori = righe.filter(r => r.ore)
+  const materiali = righe.filter(r => r.quantita)
 
   return (
     <div style={{ padding: 20 }}>
 
-      <h2>📄 Fattura #{fattura.numero}</h2>
+      {/* BOTTONI */}
+      <div style={{ marginBottom: 20 }}>
+        <button onClick={stampaPDF}>📄 PDF</button>
+        <button onClick={() => navigate(-1)}>← Indietro</button>
+      </div>
 
-      <p>
-        Cliente: {fattura.cliente} <br />
-        Data: {dayjs(fattura.data).format("DD/MM/YYYY")}
-      </p>
+      {/* DOCUMENTO */}
+      <div id="pdf" style={{
+        maxWidth: 800,
+        margin: "auto",
+        background: "white",
+        padding: 30
+      }}>
 
-      <h3>📦 Bollettini</h3>
-
-      {fattura.fatture_dettaglio?.length === 0 && (
-        <p>Nessun bollettino</p>
-      )}
-
-      {fattura.fatture_dettaglio?.map(b => (
-        <div key={b.id} style={{
-          border: "1px solid #ccc",
-          marginTop: 10,
-          padding: 10
-        }}>
-
-          📅 {dayjs(b.data).format("DD/MM/YYYY")} <br />
-          🏗️ {b.cantiere || "Nessun cantiere"} <br />
-          📝 {b.descrizione}
-
-          {b.interventi && (
-            <>
-              <h4>Operatori</h4>
-              {b.interventi.ore_operatori?.map((o, i) => (
-                <div key={i}>
-                  {o.operatori?.nome} - {o.ore}
-                </div>
-              ))}
-
-              <h4>Materiali</h4>
-              {b.interventi.materiali_bollettino?.map((m, i) => (
-                <div key={i}>
-                  {m.codice} - {m.descrizione} ({m.quantita})
-                </div>
-              ))}
-            </>
-          )}
-
+        {/* HEADER */}
+        <div style={{ marginBottom: 20 }}>
+          <b>F.LLI BATTISTUZZI SNC</b><br />
+          Via S. Giuseppe, 44<br />
+          31015 Conegliano TV<br /><br />
+          info@fillibattistuzzi-impianti.com<br />
+          Tel: 0438 411691
         </div>
-      ))}
+
+        <h2 style={{ textAlign: "center" }}>FATTURA</h2>
+
+        <br />
+
+        <div><b>Data documento:</b> {dayjs(fattura?.data).format("DD/MM/YYYY")}</div>
+        <div><b>Cliente:</b> {fattura?.cliente_nome}</div>
+
+        <br />
+
+        {/* 🔥 DATA INTERVENTO */}
+        <div>
+          <b>Data intervento:</b> {operatori[0]?.data ? dayjs(operatori[0].data).format("DD/MM/YYYY") : "-"}
+        </div>
+
+        <br />
+
+        <div>
+          <b>Descrizione lavori</b><br />
+          {operatori[0]?.descrizione || "-"}
+        </div>
+
+        <br />
+
+        {/* 🔥 ORE MIGLIORATE */}
+        <div>
+          <b>Ore lavorate</b>
+
+          {operatori.map((o, i) => (
+            <div key={i} style={{
+              display: "flex",
+              justifyContent: "flex-start",
+              gap: 20,
+              marginTop: 5
+            }}>
+              <span style={{ width: 200 }}>
+                {o.operatore || "Operatore"}
+              </span>
+              <span>
+                {o.ore} h
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <br />
+
+        {/* 🔥 MATERIALI MIGLIORATI */}
+        <div>
+          <b>Materiali</b>
+
+          <table style={{
+            width: "100%",
+            marginTop: 10,
+            borderCollapse: "collapse"
+          }}>
+            <thead>
+              <tr style={{
+                textAlign: "left",
+                borderBottom: "2px solid #000"
+              }}>
+                <th style={{ width: 60 }}>Qta</th>
+                <th style={{ width: 180 }}>Codice</th>
+                <th>Descrizione</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {materiali.map((m, i) => (
+                <tr key={i} style={{
+                  borderBottom: "1px solid #ddd"
+                }}>
+                  <td>{m.quantita}</td>
+
+                  <td style={{
+                    fontFamily: "monospace"
+                  }}>
+                    {m.codice || "-"}
+                  </td>
+
+                  <td>
+                    {m.materiale}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      {/* STAMPA */}
+      <style>
+        {`
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+
+            #pdf, #pdf * {
+              visibility: visible;
+            }
+
+            #pdf {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+            }
+          }
+        `}
+      </style>
 
     </div>
   )

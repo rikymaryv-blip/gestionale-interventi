@@ -11,8 +11,19 @@ export default function BolleUploadPage() {
   const [interventoSelezionato, setInterventoSelezionato] = useState("")
 
   const [filtroOperatore, setFiltroOperatore] = useState("")
-  const [dataDa, setDataDa] = useState("")
-  const [dataA, setDataA] = useState("")
+
+  // 🔥 DEFAULT DATE (ULTIMI 2 GIORNI)
+  const oggi = new Date()
+  const dueGiorniFa = new Date()
+  dueGiorniFa.setDate(oggi.getDate() - 2)
+
+  function formatDate(d) {
+    return d.toISOString().split("T")[0]
+  }
+
+  const [dataDa, setDataDa] = useState(formatDate(dueGiorniFa))
+  const [dataA, setDataA] = useState(formatDate(oggi))
+
   const [ricercaCarrello, setRicercaCarrello] = useState("")
 
   useEffect(() => {
@@ -179,7 +190,7 @@ export default function BolleUploadPage() {
     caricaBolle()
   }
 
-  // 🔥 AGGIUNTA: TORNA INDIETRO
+  // 🔥 TORNA INDIETRO
   async function annullaImportazione() {
     await supabase
       .from("bolle_acquisto")

@@ -14,11 +14,12 @@ export default function InterventiPage() {
   const [interventi, setInterventi] = useState([])
 
   const [editingId, setEditingId] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   const [preferiti, setPreferiti] = useState([])
   const [searchMat, setSearchMat] = useState("")
 
-  const [form, setForm] = useState({
+  const formVuoto = {
     cliente_id: "",
     cliente_nome: "",
     cantiere_id: "",
@@ -26,7 +27,9 @@ export default function InterventiPage() {
     descrizione: "",
     operatori: [],
     materiali: []
-  })
+  }
+
+  const [form, setForm] = useState(formVuoto)
 
   useEffect(() => {
     loadAll()
@@ -140,19 +143,52 @@ export default function InterventiPage() {
     setForm(prev => ({ ...prev, operatori: newOps }))
   }
 
+  function nuovoIntervento() {
+    if (editingId) {
+      const conferma = confirm("Vuoi uscire da questo intervento e crearne uno nuovo?")
+      if (!conferma) return
+    }
+
+    setEditingId(null)
+    setForm({
+      cliente_id: "",
+      cliente_nome: "",
+      cantiere_id: "",
+      data: dayjs().format("YYYY-MM-DD"),
+      descrizione: "",
+      operatori: [],
+      materiali: []
+    })
+    setCantieri([])
+    setSearchMat("")
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
   async function modificaIntervento(i) {
 
     setEditingId(i.id)
 
-    const { data: ops } = await supabase
+    const { data: ops, error: opsError } = await supabase
       .from("ore_operatori")
       .select("*")
       .eq("intervento_id", i.id)
 
-    const { data: mats } = await supabase
+    if (opsError) {
+      console.error(opsError)
+      alert("Errore caricamento operatori: " + opsError.message)
+      return
+    }
+
+    const { data: mats, error: matsError } = await supabase
       .from("materiali_bollettino")
       .select("*")
       .eq("intervento_id", i.id)
+
+    if (matsError) {
+      console.error(matsError)
+      alert("Errore caricamento materiali: " + matsError.message)
+      return
+    }
 
     setForm({
       cliente_id: i.cliente_id,
@@ -197,80 +233,174 @@ export default function InterventiPage() {
       return
     }
 
+    if (editingId === i.id) {
+      nuovoIntervento()
+    }
+
     caricaInterventi()
+  }
+
+  function vaiABolle() {
+    if (!editingId) {
+      alert("Prima salva l'intervento. Dopo il salvataggio potrai importare la bolla direttamente qui.")
+      return
+    }
+
+    navigate(`/bolle?intervento_id=${editingId}`)
+  }
+
+  function vaiACarrelli() {
+    if (!editingId) {
+      alert("Prima salva l'intervento. Dopo il salvataggio potrai importare il carrello direttamente qui.")
+      return
+    }
+
+    navigate(`/carrelli?intervento_id=${editingId}`)
+  }
+
+  function vaiAPreferiti() {
+    if (!editingId) {
+      alert("Prima salva l'intervento. Dopo il salvataggio potrai importare i preferiti direttamente qui.")
+      return
+    }
+
+    navigate(`/preferiti?intervento_id=${editingId}`)
   }
 
   async function salva() {
 
+    if (saving) return
+
     if (!form.cliente_id) return alert("Cliente mancante")
     if (!form.descrizione) return alert("Descrizione mancante")
 
+    setSaving(true)
+
     let int = null
 
-    if (editingId) {
-      await supabase
-        .from("interventi")
-        .update({
-          cliente_id: form.cliente_id,
-          cantiere_id: form.cantiere_id || null,
-          data: form.data,
-          descrizione: form.descrizione
-        })
-        .eq("id", editingId)
+    try {
+      if (editingId) {
+        const { error: updateError } = await supabase
+          .from("interventi")
+          .update({
+            cliente_id: form.cliente_id,
+            cantiere_id: form.cantiere_id || null,
+            data: form.data,
+            descrizione: form.descrizione
+          })
+          .eq("id", editingId)
 
-      int = { id: editingId }
+        if (updateError) {
+          console.error(updateError)
+          alert("Errore aggiornamento intervento: " + updateError.message)
+          setSaving(false)
+          return
+        }
 
-      await supabase.from("ore_operatori").delete().eq("intervento_id", editingId)
-      await supabase.from("materiali_bollettino").delete().eq("intervento_id", editingId)
+        int = { id: editingId }
 
-    } else {
-      const { data } = await supabase
-        .from("interventi")
-        .insert([{
-          cliente_id: form.cliente_id,
-          cantiere_id: form.cantiere_id || null,
-          data: form.data,
-          descrizione: form.descrizione,
-          archiviato: false
-        }])
-        .select()
-        .single()
+        const { error: delOpsError } = await supabase
+          .from("ore_operatori")
+          .delete()
+          .eq("intervento_id", editingId)
 
-      int = data
+        if (delOpsError) {
+          console.error(delOpsError)
+          alert("Errore aggiornamento operatori: " + delOpsError.message)
+          setSaving(false)
+          return
+        }
+
+        const { error: delMatsError } = await supabase
+          .from("materiali_bollettino")
+          .delete()
+          .eq("intervento_id", editingId)
+
+        if (delMatsError) {
+          console.error(delMatsError)
+          alert("Errore aggiornamento materiali: " + delMatsError.message)
+          setSaving(false)
+          return
+        }
+
+      } else {
+        const { data, error: insertError } = await supabase
+          .from("interventi")
+          .insert([{
+            cliente_id: form.cliente_id,
+            cantiere_id: form.cantiere_id || null,
+            data: form.data,
+            descrizione: form.descrizione,
+            archiviato: false
+          }])
+          .select()
+          .single()
+
+        if (insertError) {
+          console.error(insertError)
+          alert("Errore salvataggio intervento: " + insertError.message)
+          setSaving(false)
+          return
+        }
+
+        int = data
+      }
+
+      const ops = form.operatori
+        .filter(o => o.operatore_id && Number(o.ore || 0) > 0)
+        .map(o => ({
+          intervento_id: int.id,
+          operatore_id: o.operatore_id,
+          ore: Number(o.ore || 0)
+        }))
+
+      if (ops.length) {
+        const { error: opsInsertError } = await supabase
+          .from("ore_operatori")
+          .insert(ops)
+
+        if (opsInsertError) {
+          console.error(opsInsertError)
+          alert("Errore salvataggio operatori: " + opsInsertError.message)
+          setSaving(false)
+          return
+        }
+      }
+
+      const mats = form.materiali
+        .filter(m => m.codice || m.descrizione)
+        .map(m => ({
+          intervento_id: int.id,
+          codice: m.codice,
+          descrizione: m.descrizione,
+          quantita: Number(m.quantita || 1)
+        }))
+
+      if (mats.length) {
+        const { error: matsInsertError } = await supabase
+          .from("materiali_bollettino")
+          .insert(mats)
+
+        if (matsInsertError) {
+          console.error(matsInsertError)
+          alert("Errore salvataggio materiali: " + matsInsertError.message)
+          setSaving(false)
+          return
+        }
+      }
+
+      setEditingId(int.id)
+
+      alert(editingId ? "✅ Intervento aggiornato" : "✅ Intervento salvato. Ora puoi importare bolle, carrelli o preferiti dentro questo intervento.")
+
+      caricaInterventi()
+
+    } catch (err) {
+      console.error(err)
+      alert("Errore imprevisto durante il salvataggio")
     }
 
-    const ops = form.operatori.map(o => ({
-      intervento_id: int.id,
-      operatore_id: o.operatore_id,
-      ore: Number(o.ore || 0)
-    }))
-
-    if (ops.length) await supabase.from("ore_operatori").insert(ops)
-
-    const mats = form.materiali.map(m => ({
-      intervento_id: int.id,
-      codice: m.codice,
-      descrizione: m.descrizione,
-      quantita: m.quantita
-    }))
-
-    if (mats.length) await supabase.from("materiali_bollettino").insert(mats)
-
-    alert("✅ Intervento salvato")
-
-    setEditingId(null)
-    setForm({
-      cliente_id: "",
-      cliente_nome: "",
-      cantiere_id: "",
-      data: dayjs().format("YYYY-MM-DD"),
-      descrizione: "",
-      operatori: [],
-      materiali: []
-    })
-
-    setCantieri([])
-    caricaInterventi()
+    setSaving(false)
   }
 
   return (
@@ -279,8 +409,19 @@ export default function InterventiPage() {
       <h2>Interventi</h2>
 
       {editingId && (
-        <div style={{ color: "orange", marginBottom: 10, fontWeight: "bold" }}>
-          ✏️ MODIFICA INTERVENTO IN CORSO
+        <div style={{
+          background: "#fff3cd",
+          color: "#856404",
+          border: "1px solid #ffeeba",
+          padding: 10,
+          marginBottom: 10,
+          borderRadius: 6,
+          fontWeight: "bold"
+        }}>
+          ✏️ INTERVENTO IN MODIFICA / APERTO: #{editingId}
+          <div style={{ fontWeight: "normal", marginTop: 4 }}>
+            Puoi aggiornare i dati oppure importare bolle, carrelli e preferiti direttamente in questo intervento.
+          </div>
         </div>
       )}
 
@@ -369,16 +510,74 @@ export default function InterventiPage() {
 
       <button onClick={aggiungiOperatore}>➕ Operatore</button>
 
-      {/* MATERIALI */}
-      <h4>📦 Bolle</h4>
+      <br /><br />
 
-      <button onClick={() => navigate("/bolle")}>
-        📦 Apri gestione bolle
-      </button>
+      <div style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        flexWrap: "wrap"
+      }}>
+        <button
+          onClick={salva}
+          disabled={saving}
+          style={{
+            background: editingId ? "#0d6efd" : "#2f64d6",
+            color: "white",
+            padding: "8px 14px",
+            border: "none",
+            borderRadius: 5,
+            cursor: saving ? "not-allowed" : "pointer",
+            fontWeight: "bold"
+          }}
+        >
+          {saving ? "Salvataggio..." : editingId ? "💾 Aggiorna Intervento" : "💾 Salva Intervento"}
+        </button>
 
-      <button onClick={() => navigate("/carrelli")}>
-        📥 Apri carrelli
-      </button>
+        {!editingId && (
+          <span style={{
+            background: "#f8f9fa",
+            border: "1px solid #ddd",
+            padding: "8px 10px",
+            borderRadius: 6
+          }}>
+            Prima salva l’intervento. Dopo il salvataggio potrai importare materiale qui.
+          </span>
+        )}
+
+        {editingId && (
+          <button
+            onClick={nuovoIntervento}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 5,
+              cursor: "pointer"
+            }}
+          >
+            🧹 Nuovo intervento
+          </button>
+        )}
+      </div>
+
+      {/* PULSANTI IMPORTAZIONE MATERIALI */}
+      <div style={{
+        marginTop: 18,
+        display: "flex",
+        gap: 10,
+        flexWrap: "wrap"
+      }}>
+        <button onClick={vaiABolle}>
+          📦 Bolla
+        </button>
+
+        <button onClick={vaiACarrelli}>
+          📥 Carrello
+        </button>
+
+        <button onClick={vaiAPreferiti}>
+          ⭐ Preferiti
+        </button>
+      </div>
 
       <h4>🔎 Materiali preferiti</h4>
 
@@ -438,23 +637,22 @@ export default function InterventiPage() {
 
       <br /><br />
 
-      <button onClick={salva}>💾 Salva Intervento</button>
-
       <h3 style={{ marginTop: 30 }}>📋 Interventi salvati</h3>
 
       {interventi.map(i => (
         <div key={i.id} style={{
-          border: "1px solid #ccc",
+          border: editingId === i.id ? "2px solid orange" : "1px solid #ccc",
           padding: 12,
           marginTop: 8,
-          borderRadius: 6
+          borderRadius: 6,
+          background: editingId === i.id ? "#fffaf0" : "white"
         }}>
           <div><b>{i.data}</b></div>
           <div><b>Cliente:</b> {i.clienti?.nome || "-"}</div>
           <div><b>Descrizione:</b> {i.descrizione}</div>
           <div><b>Materiali:</b> {i.materiali_bollettino?.length || 0}</div>
 
-          <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
 
             <button onClick={() => navigate(`/bollettino/${i.id}`)}>
               👁 Apri
@@ -462,6 +660,18 @@ export default function InterventiPage() {
 
             <button onClick={() => modificaIntervento(i)}>
               ✏️ Modifica
+            </button>
+
+            <button onClick={() => navigate(`/bolle?intervento_id=${i.id}`)}>
+              📦 Bolla
+            </button>
+
+            <button onClick={() => navigate(`/carrelli?intervento_id=${i.id}`)}>
+              📥 Carrello
+            </button>
+
+            <button onClick={() => navigate(`/preferiti?intervento_id=${i.id}`)}>
+              ⭐ Preferiti
             </button>
 
             <button
@@ -475,9 +685,13 @@ export default function InterventiPage() {
               onClick={async () => {
                 if (!confirm("Eliminare intervento?")) return
 
-                await supabase.from("interventi").delete().eq("id", i.id)
                 await supabase.from("ore_operatori").delete().eq("intervento_id", i.id)
                 await supabase.from("materiali_bollettino").delete().eq("intervento_id", i.id)
+                await supabase.from("interventi").delete().eq("id", i.id)
+
+                if (editingId === i.id) {
+                  nuovoIntervento()
+                }
 
                 caricaInterventi()
               }}

@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { supabase } from "../supabaseClient"
 
 export default function BolleUploadPage() {
+
+  const [searchParams] = useSearchParams()
+  const interventoIdDaUrl = searchParams.get("intervento_id")
 
   const [bolle, setBolle] = useState([])
   const [righe, setRighe] = useState([])
@@ -9,6 +13,7 @@ export default function BolleUploadPage() {
 
   const [interventi, setInterventi] = useState([])
   const [interventoSelezionato, setInterventoSelezionato] = useState("")
+  const [interventoCorrente, setInterventoCorrente] = useState(null)
 
   const [filtroOperatore, setFiltroOperatore] = useState("")
 
@@ -31,13 +36,25 @@ export default function BolleUploadPage() {
     caricaInterventi()
   }, [])
 
+  useEffect(() => {
+    if (interventoIdDaUrl) {
+      setInterventoSelezionato(interventoIdDaUrl)
+    }
+  }, [interventoIdDaUrl])
+
   async function caricaInterventi() {
     const { data } = await supabase
       .from("interventi")
-      .select("id, data, clienti(nome)")
+      .select("id, data, descrizione, clienti(nome)")
       .order("data", { ascending: false })
 
     setInterventi(data || [])
+
+    if (interventoIdDaUrl) {
+      const trovato = (data || []).find(i => String(i.id) === String(interventoIdDaUrl))
+      setInterventoCorrente(trovato || null)
+      setInterventoSelezionato(interventoIdDaUrl)
+    }
   }
 
   async function caricaBolle() {
@@ -51,7 +68,12 @@ export default function BolleUploadPage() {
 
   async function apriBolla(b) {
     setSelected(b)
-    setInterventoSelezionato("")
+
+    if (!interventoIdDaUrl) {
+      setInterventoSelezionato("")
+    } else {
+      setInterventoSelezionato(interventoIdDaUrl)
+    }
 
     const { data } = await supabase
       .from("bolle_righe")
@@ -156,22 +178,24 @@ export default function BolleUploadPage() {
     caricaBolle()
   }
 
-  // 🔒 IMPORT (NON TOCCATO)
+  // 🔒 IMPORT
   async function importaInIntervento() {
+
+    const interventoFinale = interventoIdDaUrl || interventoSelezionato
 
     if (selected?.usata) {
       alert("⚠️ Questa bolla è già stata importata")
       return
     }
 
-    if (!interventoSelezionato) {
+    if (!interventoFinale) {
       alert("Seleziona intervento")
       return
     }
 
     for (let r of righe) {
       await supabase.from("materiali_bollettino").insert({
-        intervento_id: interventoSelezionato,
+        intervento_id: interventoFinale,
         codice: r.codice,
         descrizione: r.descrizione,
         quantita: r.quantita
@@ -208,6 +232,33 @@ export default function BolleUploadPage() {
     <div style={{ padding: 20 }}>
 
       <h2>📦 Archivio Bolle</h2>
+
+      {interventoIdDaUrl && (
+        <div style={{
+          background: "#e7f1ff",
+          border: "1px solid #9ec5fe",
+          color: "#084298",
+          padding: 10,
+          borderRadius: 6,
+          marginBottom: 12
+        }}>
+          <b>Importazione diretta attiva</b>
+          <div>
+            Stai importando materiali nell’intervento:
+            {" "}
+            <b>
+              #{interventoIdDaUrl}
+              {interventoCorrente?.data ? ` - ${interventoCorrente.data}` : ""}
+              {interventoCorrente?.clienti?.nome ? ` - ${interventoCorrente.clienti.nome}` : ""}
+            </b>
+          </div>
+          {interventoCorrente?.descrizione && (
+            <div>
+              Descrizione: {interventoCorrente.descrizione}
+            </div>
+          )}
+        </div>
+      )}
 
       <input type="file" accept=".csv" onChange={handleFile} />
 
@@ -292,14 +343,32 @@ export default function BolleUploadPage() {
 
           <button onClick={() => setSelected(null)}>❌ Chiudi</button>
 
-          <select value={interventoSelezionato} onChange={(e) => setInterventoSelezionato(e.target.value)}>
-            <option value="">Seleziona intervento</option>
-            {interventi.map(i => (
-              <option key={i.id} value={i.id}>
-                {i.data} - {i.clienti?.nome}
-              </option>
-            ))}
-          </select>
+          {interventoIdDaUrl ? (
+            <div style={{
+              marginTop: 10,
+              marginBottom: 10,
+              background: "#f8f9fa",
+              border: "1px solid #ddd",
+              padding: 10,
+              borderRadius: 6
+            }}>
+              Materiali destinati all’intervento:
+              {" "}
+              <b>
+                #{interventoIdDaUrl}
+                {interventoCorrente?.clienti?.nome ? ` - ${interventoCorrente.clienti.nome}` : ""}
+              </b>
+            </div>
+          ) : (
+            <select value={interventoSelezionato} onChange={(e) => setInterventoSelezionato(e.target.value)}>
+              <option value="">Seleziona intervento</option>
+              {interventi.map(i => (
+                <option key={i.id} value={i.id}>
+                  {i.data} - {i.clienti?.nome}
+                </option>
+              ))}
+            </select>
+          )}
 
           <button onClick={importaInIntervento} disabled={selected?.usata}>
             🚀 Importa

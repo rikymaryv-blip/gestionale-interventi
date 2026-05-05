@@ -18,9 +18,9 @@ import OreMesePage from "./pages/OreMesePage"
 import BolleUploadPage from "./pages/BolleUploadPage"
 import TestCantieri from "./TestCantieri"
 
-// 🔥 NUOVO
+// NUOVI
 import StoricoInterventiPage from "./pages/StoricoInterventiPage"
-import CarrelliPage from "./pages/CarrelliPage" // 👈 AGGIUNTO
+import CarrelliPage from "./pages/CarrelliPage"
 
 // MENU
 function Menu() {
@@ -54,8 +54,8 @@ function Menu() {
       {btn("/interventi", "Interventi", "🧾")}
       {btn("/clienti", "Clienti", "👤")}
 
-      {/* 🔥 NUOVO BOTTONE */}
       {btn("/storico-interventi", "Storico Interventi", "📂")}
+      {btn("/archivio", "Archivio Interventi", "📦")}
 
       {/* BOLLE */}
       <button
@@ -69,7 +69,7 @@ function Menu() {
         📥 Bolle
       </button>
 
-      {/* 🔥 CARRELLI (NUOVO) */}
+      {/* CARRELLI */}
       <button
         style={menuBtn}
         onClick={() => {
@@ -97,6 +97,7 @@ function Menu() {
         <div style={subMenu}>
           {btn("/fatture", "Fatture", "💰")}
           {btn("/storico-fatture", "Storico", "📜")}
+          {btn("/archivio-cliente", "Archivio Cliente", "👤")}
         </div>
       )}
 
@@ -151,10 +152,8 @@ export default function App() {
           <Route path="/storico" element={<InterventiStorico />} />
           <Route path="/ore-mese" element={<OreMesePage />} />
           <Route path="/bolle" element={<BolleUploadPage />} />
-          <Route path="/carrelli" element={<CarrelliPage />} /> {/* 👈 AGGIUNTO */}
+          <Route path="/carrelli" element={<CarrelliPage />} />
           <Route path="/test" element={<TestCantieri />} />
-
-          {/* 🔥 NUOVA ROUTE */}
           <Route path="/storico-interventi" element={<StoricoInterventiPage />} />
         </Routes>
       </div>

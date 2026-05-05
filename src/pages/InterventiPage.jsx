@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
 import dayjs from "dayjs"
-import MaterialeSelector from "../components/MaterialeSelector"
 import { useNavigate } from "react-router-dom"
 
 export default function InterventiPage() {
@@ -16,6 +15,9 @@ export default function InterventiPage() {
 
   const [editingId, setEditingId] = useState(null)
 
+  const [preferiti, setPreferiti] = useState([])
+  const [searchMat, setSearchMat] = useState("")
+
   const [form, setForm] = useState({
     cliente_id: "",
     cliente_nome: "",
@@ -29,18 +31,35 @@ export default function InterventiPage() {
   useEffect(() => {
     loadAll()
     caricaInterventi()
+    caricaPreferiti()
   }, [])
 
   async function loadAll() {
-    const { data: cli } = await supabase.from("clienti").select("*").eq("attivo", true)
-    const { data: op } = await supabase.from("operatori").select("*").order("nome")
+    const { data: cli } = await supabase
+      .from("clienti")
+      .select("*")
+      .eq("attivo", true)
+
+    const { data: op } = await supabase
+      .from("operatori")
+      .select("*")
+      .order("nome")
 
     setClienti(cli || [])
     setOperatoriDB(op || [])
   }
 
-  async function caricaInterventi() {
+  async function caricaPreferiti() {
     const { data } = await supabase
+      .from("articoli_preferiti")
+      .select("*")
+      .limit(500)
+
+    setPreferiti(data || [])
+  }
+
+  async function caricaInterventi() {
+    const { data, error } = await supabase
       .from("interventi")
       .select(`
         *,
@@ -48,7 +67,14 @@ export default function InterventiPage() {
         cantieri(nome),
         materiali_bollettino(id)
       `)
+      .or("archiviato.is.null,archiviato.eq.false")
       .order("data", { ascending: false })
+
+    if (error) {
+      console.error(error)
+      alert("Errore caricamento interventi: " + error.message)
+      return
+    }
 
     setInterventi(data || [])
   }
@@ -134,12 +160,10 @@ export default function InterventiPage() {
       cantiere_id: i.cantiere_id || "",
       data: i.data,
       descrizione: i.descrizione,
-
       operatori: (ops || []).map(o => ({
         operatore_id: o.operatore_id,
         ore: o.ore
       })),
-
       materiali: (mats || []).map(m => ({
         codice: m.codice,
         descrizione: m.descrizione,
@@ -157,6 +181,23 @@ export default function InterventiPage() {
     }
 
     window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  async function archiviaIntervento(i) {
+    if (!confirm("Archiviare questo intervento?")) return
+
+    const { error } = await supabase
+      .from("interventi")
+      .update({ archiviato: true })
+      .eq("id", i.id)
+
+    if (error) {
+      console.error(error)
+      alert("Errore archiviazione: " + error.message)
+      return
+    }
+
+    caricaInterventi()
   }
 
   async function salva() {
@@ -189,7 +230,8 @@ export default function InterventiPage() {
           cliente_id: form.cliente_id,
           cantiere_id: form.cantiere_id || null,
           data: form.data,
-          descrizione: form.descrizione
+          descrizione: form.descrizione,
+          archiviato: false
         }])
         .select()
         .single()
@@ -203,9 +245,7 @@ export default function InterventiPage() {
       ore: Number(o.ore || 0)
     }))
 
-    if (ops.length) {
-      await supabase.from("ore_operatori").insert(ops)
-    }
+    if (ops.length) await supabase.from("ore_operatori").insert(ops)
 
     const mats = form.materiali.map(m => ({
       intervento_id: int.id,
@@ -214,14 +254,11 @@ export default function InterventiPage() {
       quantita: m.quantita
     }))
 
-    if (mats.length) {
-      await supabase.from("materiali_bollettino").insert(mats)
-    }
+    if (mats.length) await supabase.from("materiali_bollettino").insert(mats)
 
     alert("✅ Intervento salvato")
 
     setEditingId(null)
-
     setForm({
       cliente_id: "",
       cliente_nome: "",
@@ -242,21 +279,18 @@ export default function InterventiPage() {
       <h2>Interventi</h2>
 
       {editingId && (
-        <div style={{ color: "orange", marginBottom: 10 }}>
+        <div style={{ color: "orange", marginBottom: 10, fontWeight: "bold" }}>
           ✏️ MODIFICA INTERVENTO IN CORSO
         </div>
       )}
 
+      {/* CLIENTE */}
       <div style={{ position: "relative" }}>
         <input
           placeholder="Cerca cliente..."
           value={form.cliente_nome}
           onChange={(e) => {
-            setForm({
-              ...form,
-              cliente_nome: e.target.value,
-              cliente_id: ""
-            })
+            setForm({ ...form, cliente_nome: e.target.value, cliente_id: "" })
             setShowClienti(true)
           }}
           onBlur={() => setTimeout(() => setShowClienti(false), 200)}
@@ -274,7 +308,11 @@ export default function InterventiPage() {
               .filter(c => c.nome.toLowerCase().includes(form.cliente_nome.toLowerCase()))
               .slice(0, 5)
               .map(c => (
-                <div key={c.id} onClick={() => selezionaCliente(c)} style={{ padding: 5, cursor: "pointer" }}>
+                <div
+                  key={c.id}
+                  onClick={() => selezionaCliente(c)}
+                  style={{ padding: 5, cursor: "pointer" }}
+                >
                   {c.nome}
                 </div>
               ))}
@@ -292,14 +330,11 @@ export default function InterventiPage() {
         ))}
       </select>
 
-{/* 📅 DATA */}
-<input
-  type="date"
-  value={form.data}
-  onChange={e => setForm({ ...form, data: e.target.value })}
-  style={{ display: "block", marginBottom: 10 }}
-/>
-
+      <input
+        type="date"
+        value={form.data}
+        onChange={e => setForm({ ...form, data: e.target.value })}
+      />
 
       <input
         placeholder="Descrizione"
@@ -334,30 +369,58 @@ export default function InterventiPage() {
 
       <button onClick={aggiungiOperatore}>➕ Operatore</button>
 
+      {/* MATERIALI */}
       <h4>📦 Bolle</h4>
+
       <button onClick={() => navigate("/bolle")}>
-        Apri gestione bolle
+        📦 Apri gestione bolle
       </button>
 
-      <h4>Materiali</h4>
-      <MaterialeSelector onAdd={aggiungiMateriale} />
+      <button onClick={() => navigate("/carrelli")}>
+        📥 Apri carrelli
+      </button>
 
-      {/* 🔥 SEPARATORE */}
-      <div style={{ marginTop: 10, fontWeight: "bold", color: "#1976d2" }}>
+      <h4>🔎 Materiali preferiti</h4>
+
+      <input
+        placeholder="Cerca materiale..."
+        value={searchMat}
+        onChange={(e) => setSearchMat(e.target.value)}
+      />
+
+      <div style={{ border: "1px solid #ccc", maxHeight: 200, overflow: "auto" }}>
+        {preferiti
+          .filter(p =>
+            p.codice?.toLowerCase().includes(searchMat.toLowerCase()) ||
+            p.descrizione?.toLowerCase().includes(searchMat.toLowerCase())
+          )
+          .slice(0, 50)
+          .map((p, i) => (
+            <div
+              key={i}
+              onClick={() => aggiungiMateriale(p)}
+              style={{ padding: 5, cursor: "pointer" }}
+            >
+              {p.codice} — {p.descrizione}
+            </div>
+          ))}
+      </div>
+
+      <div style={{ marginTop: 10, fontWeight: "bold" }}>
         📦 Materiali inseriti nell’intervento
       </div>
 
       {form.materiali.map((m, i) => (
-        <div key={i} style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          border: "2px solid #4CAF50",
-          background: "#f6fff6",
-          padding: 6,
-          marginTop: 4,
-          borderRadius: 4
-        }}>
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            borderBottom: "1px solid #eee",
+            padding: "6px 0"
+          }}
+        >
           <div style={{ flex: 1 }}>
             {m.codice} — {m.descrizione}
           </div>
@@ -366,28 +429,16 @@ export default function InterventiPage() {
             type="number"
             value={m.quantita}
             onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
-            style={{ width: 60 }}
+            style={{ width: 70 }}
           />
 
-          <button
-            onClick={() => eliminaMateriale(i)}
-            style={{ background: "red", color: "white" }}
-          >
-            ❌
-          </button>
+          <button onClick={() => eliminaMateriale(i)}>❌</button>
         </div>
       ))}
 
       <br /><br />
 
-      <button onClick={salva} style={{
-        background: "#2196F3",
-        color: "white",
-        padding: "10px 20px",
-        borderRadius: 6
-      }}>
-        💾 Salva Intervento
-      </button>
+      <button onClick={salva}>💾 Salva Intervento</button>
 
       <h3 style={{ marginTop: 30 }}>📋 Interventi salvati</h3>
 
@@ -398,7 +449,6 @@ export default function InterventiPage() {
           marginTop: 8,
           borderRadius: 6
         }}>
-
           <div><b>{i.data}</b></div>
           <div><b>Cliente:</b> {i.clienti?.nome || "-"}</div>
           <div><b>Descrizione:</b> {i.descrizione}</div>
@@ -412,6 +462,13 @@ export default function InterventiPage() {
 
             <button onClick={() => modificaIntervento(i)}>
               ✏️ Modifica
+            </button>
+
+            <button
+              onClick={() => archiviaIntervento(i)}
+              style={{ background: "#ff9800", color: "white" }}
+            >
+              📦 Archivia
             </button>
 
             <button
@@ -429,31 +486,7 @@ export default function InterventiPage() {
               🗑 Elimina
             </button>
 
-            <button
-              onClick={async () => {
-                const res = await fetch(
-                  "https://olmekymxlopdilkhucvf.supabase.co/functions/v1/genera-bollettino",
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ intervento_id: i.id })
-                  }
-                )
-
-                const blob = await res.blob()
-                const url = window.URL.createObjectURL(blob)
-
-                const a = document.createElement("a")
-                a.href = url
-                a.download = "bollettino.pdf"
-                a.click()
-              }}
-            >
-              📄 PDF
-            </button>
-
           </div>
-
         </div>
       ))}
 

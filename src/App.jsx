@@ -20,6 +20,7 @@ import TestCantieri from "./TestCantieri"
 
 // 🔥 NUOVO
 import StoricoInterventiPage from "./pages/StoricoInterventiPage"
+import CarrelliPage from "./pages/CarrelliPage" // 👈 AGGIUNTO
 
 // MENU
 function Menu() {
@@ -66,6 +67,18 @@ function Menu() {
         }}
       >
         📥 Bolle
+      </button>
+
+      {/* 🔥 CARRELLI (NUOVO) */}
+      <button
+        style={menuBtn}
+        onClick={() => {
+          const codice = prompt("Inserisci codice accesso")
+          if (codice !== "1234") return alert("Accesso negato")
+          navigate("/carrelli")
+        }}
+      >
+        🛒 Carrelli
       </button>
 
       {/* FATTURAZIONE */}
@@ -138,6 +151,7 @@ export default function App() {
           <Route path="/storico" element={<InterventiStorico />} />
           <Route path="/ore-mese" element={<OreMesePage />} />
           <Route path="/bolle" element={<BolleUploadPage />} />
+          <Route path="/carrelli" element={<CarrelliPage />} /> {/* 👈 AGGIUNTO */}
           <Route path="/test" element={<TestCantieri />} />
 
           {/* 🔥 NUOVA ROUTE */}

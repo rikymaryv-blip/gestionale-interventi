@@ -21,11 +21,15 @@ import TestCantieri from "./TestCantieri"
 // NUOVI
 import StoricoInterventiPage from "./pages/StoricoInterventiPage"
 import CarrelliPage from "./pages/CarrelliPage"
+import PreferitiPage from "./pages/PreferitiPage"
+import OreOperatoriExcelPage from "./pages/OreOperatoriExcelPage"
 
 // MENU
 function Menu() {
+  const [openMateriali, setOpenMateriali] = useState(false)
+  const [openArchivio, setOpenArchivio] = useState(false)
   const [openFatt, setOpenFatt] = useState(false)
-  const [openListino, setOpenListino] = useState(false)
+
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -47,47 +51,91 @@ function Menu() {
     )
   }
 
+  function chiediCodiceEApri(callback) {
+    const codice = prompt("Inserisci codice accesso")
+    if (codice !== "1234") {
+      alert("Accesso negato")
+      return
+    }
+
+    callback()
+  }
+
   return (
     <div style={menuBar}>
 
+      {/* PRINCIPALI */}
       {btn("/", "Calendario", "📅")}
       {btn("/interventi", "Interventi", "🧾")}
       {btn("/clienti", "Clienti", "👤")}
 
-      {btn("/storico-interventi", "Storico Interventi", "📂")}
-      {btn("/archivio", "Archivio Interventi", "📦")}
-
-      {/* BOLLE */}
+      {/* MATERIALI */}
       <button
-        style={menuBtn}
+        style={{
+          ...menuBtn,
+          background: openMateriali ? "#1976d2" : "white",
+          color: openMateriali ? "white" : "black",
+          border: openMateriali ? "none" : "1px solid #ccc"
+        }}
         onClick={() => {
-          const codice = prompt("Inserisci codice accesso")
-          if (codice !== "1234") return alert("Accesso negato")
-          navigate("/bolle")
+          chiediCodiceEApri(() => {
+            setOpenMateriali(!openMateriali)
+            setOpenArchivio(false)
+            setOpenFatt(false)
+          })
         }}
       >
-        📥 Bolle
+        📦 Materiali
       </button>
 
-      {/* CARRELLI */}
+      {openMateriali && (
+        <div style={subMenu}>
+          {btn("/bolle", "Bolle", "📥")}
+          {btn("/carrelli", "Carrelli", "🛒")}
+          {btn("/preferiti", "Preferiti", "⭐")}
+          {btn("/listino", "Listino", "📦")}
+        </div>
+      )}
+
+      {/* ARCHIVIO */}
       <button
-        style={menuBtn}
+        style={{
+          ...menuBtn,
+          background: openArchivio ? "#1976d2" : "white",
+          color: openArchivio ? "white" : "black",
+          border: openArchivio ? "none" : "1px solid #ccc"
+        }}
         onClick={() => {
-          const codice = prompt("Inserisci codice accesso")
-          if (codice !== "1234") return alert("Accesso negato")
-          navigate("/carrelli")
+          setOpenArchivio(!openArchivio)
+          setOpenMateriali(false)
+          setOpenFatt(false)
         }}
       >
-        🛒 Carrelli
+        📂 Archivio
       </button>
+
+      {openArchivio && (
+        <div style={subMenu}>
+          {btn("/storico-interventi", "Storico Interventi", "📂")}
+          {btn("/archivio", "Archivio Interventi", "📦")}
+          {btn("/archivio-cliente", "Archivio Cliente", "👤")}
+        </div>
+      )}
 
       {/* FATTURAZIONE */}
       <button
-        style={menuBtn}
+        style={{
+          ...menuBtn,
+          background: openFatt ? "#1976d2" : "white",
+          color: openFatt ? "white" : "black",
+          border: openFatt ? "none" : "1px solid #ccc"
+        }}
         onClick={() => {
-          const codice = prompt("Inserisci codice accesso")
-          if (codice !== "1234") return alert("Accesso negato")
-          setOpenFatt(!openFatt)
+          chiediCodiceEApri(() => {
+            setOpenFatt(!openFatt)
+            setOpenMateriali(false)
+            setOpenArchivio(false)
+          })
         }}
       >
         💰 Fatturazione
@@ -96,26 +144,8 @@ function Menu() {
       {openFatt && (
         <div style={subMenu}>
           {btn("/fatture", "Fatture", "💰")}
-          {btn("/storico-fatture", "Storico", "📜")}
-          {btn("/archivio-cliente", "Archivio Cliente", "👤")}
-        </div>
-      )}
-
-      {/* LISTINO */}
-      <button
-        style={menuBtn}
-        onClick={() => {
-          const codice = prompt("Inserisci codice accesso")
-          if (codice !== "1234") return alert("Accesso negato")
-          setOpenListino(!openListino)
-        }}
-      >
-        📦 Listino
-      </button>
-
-      {openListino && (
-        <div style={subMenu}>
-          {btn("/listino", "Gestione", "📦")}
+          {btn("/storico-fatture", "Storico Fatture", "📜")}
+          {btn("/ore-operatori-excel", "Ore Operatori", "📊")}
         </div>
       )}
 
@@ -153,6 +183,8 @@ export default function App() {
           <Route path="/ore-mese" element={<OreMesePage />} />
           <Route path="/bolle" element={<BolleUploadPage />} />
           <Route path="/carrelli" element={<CarrelliPage />} />
+          <Route path="/preferiti" element={<PreferitiPage />} />
+          <Route path="/ore-operatori-excel" element={<OreOperatoriExcelPage />} />
           <Route path="/test" element={<TestCantieri />} />
           <Route path="/storico-interventi" element={<StoricoInterventiPage />} />
         </Routes>
@@ -184,5 +216,8 @@ const subMenu = {
   display: "flex",
   gap: 8,
   marginLeft: 10,
-  flexWrap: "wrap"
+  flexWrap: "wrap",
+  padding: "6px 8px",
+  background: "#eeeeee",
+  borderRadius: 6
 }

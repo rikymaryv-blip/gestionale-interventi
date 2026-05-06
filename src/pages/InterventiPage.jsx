@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
 import dayjs from "dayjs"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 
 export default function InterventiPage() {
 
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const editIdDaUrl = searchParams.get("edit_id")
 
   const [clienti, setClienti] = useState([])
   const [cantieri, setCantieri] = useState([])
@@ -15,9 +17,18 @@ export default function InterventiPage() {
 
   const [editingId, setEditingId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [aperturaAutomaticaFatta, setAperturaAutomaticaFatta] = useState(false)
 
   const [preferiti, setPreferiti] = useState([])
   const [searchMat, setSearchMat] = useState("")
+
+  const [showAltroMat, setShowAltroMat] = useState(false)
+
+  const [altroMat, setAltroMat] = useState({
+    codice: "",
+    descrizione: "",
+    quantita: 1
+  })
 
   const formVuoto = {
     cliente_id: "",
@@ -36,6 +47,13 @@ export default function InterventiPage() {
     caricaInterventi()
     caricaPreferiti()
   }, [])
+
+  useEffect(() => {
+    if (editIdDaUrl && !aperturaAutomaticaFatta) {
+      setAperturaAutomaticaFatta(true)
+      apriInterventoDaUrl(editIdDaUrl)
+    }
+  }, [editIdDaUrl, aperturaAutomaticaFatta])
 
   async function loadAll() {
     const { data: cli } = await supabase
@@ -82,6 +100,28 @@ export default function InterventiPage() {
     setInterventi(data || [])
   }
 
+  async function apriInterventoDaUrl(id) {
+    const { data, error } = await supabase
+      .from("interventi")
+      .select(`
+        *,
+        clienti(nome),
+        cantieri(nome)
+      `)
+      .eq("id", id)
+      .single()
+
+    if (error) {
+      console.error(error)
+      alert("Errore apertura intervento: " + error.message)
+      return
+    }
+
+    if (data) {
+      modificaIntervento(data)
+    }
+  }
+
   async function selezionaCliente(c) {
     setForm(prev => ({
       ...prev,
@@ -125,6 +165,37 @@ export default function InterventiPage() {
     setForm(prev => ({ ...prev, materiali: newMats }))
   }
 
+  function aggiungiMaterialeManuale() {
+    const codice = altroMat.codice.trim()
+    const descrizione = altroMat.descrizione.trim()
+    const quantita = Number(altroMat.quantita || 1)
+
+    if (!codice && !descrizione) {
+      alert("Inserisci almeno codice o descrizione")
+      return
+    }
+
+    setForm(prev => ({
+      ...prev,
+      materiali: [
+        ...prev.materiali,
+        {
+          codice,
+          descrizione,
+          quantita
+        }
+      ]
+    }))
+
+    setAltroMat({
+      codice: "",
+      descrizione: "",
+      quantita: 1
+    })
+
+    setShowAltroMat(false)
+  }
+
   function aggiungiOperatore() {
     setForm(prev => ({
       ...prev,
@@ -150,6 +221,7 @@ export default function InterventiPage() {
     }
 
     setEditingId(null)
+    setAperturaAutomaticaFatta(false)
     setForm({
       cliente_id: "",
       cliente_nome: "",
@@ -161,6 +233,13 @@ export default function InterventiPage() {
     })
     setCantieri([])
     setSearchMat("")
+    setAltroMat({
+      codice: "",
+      descrizione: "",
+      quantita: 1
+    })
+    setShowAltroMat(false)
+    navigate("/interventi")
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
@@ -206,6 +285,14 @@ export default function InterventiPage() {
         quantita: m.quantita
       }))
     })
+
+    setAltroMat({
+      codice: "",
+      descrizione: "",
+      quantita: 1
+    })
+
+    setShowAltroMat(false)
 
     if (i.cliente_id) {
       const { data } = await supabase
@@ -579,35 +666,77 @@ export default function InterventiPage() {
         </button>
       </div>
 
-      <h4>🔎 Materiali preferiti</h4>
+      <div style={{
+        marginTop: 10,
+        fontWeight: "bold",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap"
+      }}>
+        <span>📦 Materiali inseriti nell’intervento</span>
 
-      <input
-        placeholder="Cerca materiale..."
-        value={searchMat}
-        onChange={(e) => setSearchMat(e.target.value)}
-      />
+        {!showAltroMat && (
+          <button onClick={() => setShowAltroMat(true)}>
+            ➕ Aggiungi materiale libero
+          </button>
+        )}
 
-      <div style={{ border: "1px solid #ccc", maxHeight: 200, overflow: "auto" }}>
-        {preferiti
-          .filter(p =>
-            p.codice?.toLowerCase().includes(searchMat.toLowerCase()) ||
-            p.descrizione?.toLowerCase().includes(searchMat.toLowerCase())
-          )
-          .slice(0, 50)
-          .map((p, i) => (
-            <div
-              key={i}
-              onClick={() => aggiungiMateriale(p)}
-              style={{ padding: 5, cursor: "pointer" }}
-            >
-              {p.codice} — {p.descrizione}
-            </div>
-          ))}
+        {showAltroMat && (
+          <button
+            onClick={() => {
+              setShowAltroMat(false)
+              setAltroMat({
+                codice: "",
+                descrizione: "",
+                quantita: 1
+              })
+            }}
+          >
+            ❌ Chiudi
+          </button>
+        )}
       </div>
 
-      <div style={{ marginTop: 10, fontWeight: "bold" }}>
-        📦 Materiali inseriti nell’intervento
-      </div>
+      {showAltroMat && (
+        <div style={{
+          marginTop: 8,
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          alignItems: "center",
+          border: "1px solid #ddd",
+          padding: 8,
+          borderRadius: 6,
+          background: "#f8f9fa"
+        }}>
+          <input
+            placeholder="Codice"
+            value={altroMat.codice}
+            onChange={(e) => setAltroMat(prev => ({ ...prev, codice: e.target.value }))}
+            style={{ padding: 6, minWidth: 120 }}
+          />
+
+          <input
+            placeholder="Descrizione"
+            value={altroMat.descrizione}
+            onChange={(e) => setAltroMat(prev => ({ ...prev, descrizione: e.target.value }))}
+            style={{ padding: 6, minWidth: 260, flex: 1 }}
+          />
+
+          <input
+            type="number"
+            placeholder="Qta"
+            value={altroMat.quantita}
+            onChange={(e) => setAltroMat(prev => ({ ...prev, quantita: e.target.value }))}
+            style={{ padding: 6, width: 80 }}
+          />
+
+          <button onClick={aggiungiMaterialeManuale}>
+            ➕ Altro
+          </button>
+        </div>
+      )}
 
       {form.materiali.map((m, i) => (
         <div

@@ -26,30 +26,9 @@ import OreOperatoriExcelPage from "./pages/OreOperatoriExcelPage"
 
 // MENU
 function Menu() {
-  const [openMateriali, setOpenMateriali] = useState(false)
-  const [openArchivio, setOpenArchivio] = useState(false)
-  const [openFatt, setOpenFatt] = useState(false)
-
+  const [menuAperto, setMenuAperto] = useState("")
   const navigate = useNavigate()
   const location = useLocation()
-
-  function btn(path, label, icon) {
-    const active = location.pathname === path
-
-    return (
-      <button
-        onClick={() => navigate(path)}
-        style={{
-          ...menuBtn,
-          background: active ? "#1976d2" : "white",
-          color: active ? "white" : "black",
-          border: active ? "none" : "1px solid #ccc"
-        }}
-      >
-        {icon} {label}
-      </button>
-    )
-  }
 
   function chiediCodiceEApri(callback) {
     const codice = prompt("Inserisci codice accesso")
@@ -61,95 +40,123 @@ function Menu() {
     callback()
   }
 
-  return (
-    <div style={menuBar}>
+  function capitolo(nome, label, icon, protetto = false) {
+    const active = menuAperto === nome
 
-      {/* PRINCIPALI */}
-      {btn("/", "Calendario", "📅")}
-      {btn("/interventi", "Interventi", "🧾")}
-      {btn("/clienti", "Clienti", "👤")}
-
-      {/* MATERIALI */}
+    return (
       <button
+        onClick={() => {
+          if (nome === "calendario") {
+            setMenuAperto("")
+            navigate("/")
+            return
+          }
+
+          if (protetto) {
+            chiediCodiceEApri(() => {
+              setMenuAperto(active ? "" : nome)
+            })
+            return
+          }
+
+          setMenuAperto(active ? "" : nome)
+        }}
         style={{
           ...menuBtn,
-          background: openMateriali ? "#1976d2" : "white",
-          color: openMateriali ? "white" : "black",
-          border: openMateriali ? "none" : "1px solid #ccc"
-        }}
-        onClick={() => {
-          chiediCodiceEApri(() => {
-            setOpenMateriali(!openMateriali)
-            setOpenArchivio(false)
-            setOpenFatt(false)
-          })
+          background: active || (nome === "calendario" && location.pathname === "/") ? "#1976d2" : "white",
+          color: active || (nome === "calendario" && location.pathname === "/") ? "white" : "black",
+          border: active || (nome === "calendario" && location.pathname === "/") ? "none" : "1px solid #ccc",
+          fontWeight: "bold"
         }}
       >
-        📦 Materiali
+        {icon} {label}
       </button>
+    )
+  }
 
-      {openMateriali && (
-        <div style={subMenu}>
+  function btn(path, label, icon, protetto = false) {
+    const active = location.pathname === path
+
+    return (
+      <button
+        onClick={() => {
+          if (protetto) {
+            chiediCodiceEApri(() => navigate(path))
+            return
+          }
+
+          navigate(path)
+        }}
+        style={{
+          ...subBtn,
+          background: active ? "#1976d2" : "white",
+          color: active ? "white" : "black",
+          border: active ? "none" : "1px solid #ccc"
+        }}
+      >
+        {icon} {label}
+      </button>
+    )
+  }
+
+  function renderSottoMenu() {
+    if (menuAperto === "interventi") {
+      return (
+        <div style={subMenuBar}>
+          {btn("/interventi", "Interventi", "🧾")}
+          {btn("/storico-interventi", "Storico Interventi", "📂")}
+          {btn("/archivio", "Archivio Interventi", "📦")}
+          {btn("/ore-mese", "Ore Mese", "📊")}
+        </div>
+      )
+    }
+
+    if (menuAperto === "anagrafiche") {
+      return (
+        <div style={subMenuBar}>
+          {btn("/clienti", "Clienti", "👤")}
+          {btn("/operatori", "Operatori", "👷", true)}
+        </div>
+      )
+    }
+
+    if (menuAperto === "materiali") {
+      return (
+        <div style={subMenuBar}>
           {btn("/bolle", "Bolle", "📥")}
           {btn("/carrelli", "Carrelli", "🛒")}
           {btn("/preferiti", "Preferiti", "⭐")}
           {btn("/listino", "Listino", "📦")}
         </div>
-      )}
+      )
+    }
 
-      {/* ARCHIVIO */}
-      <button
-        style={{
-          ...menuBtn,
-          background: openArchivio ? "#1976d2" : "white",
-          color: openArchivio ? "white" : "black",
-          border: openArchivio ? "none" : "1px solid #ccc"
-        }}
-        onClick={() => {
-          setOpenArchivio(!openArchivio)
-          setOpenMateriali(false)
-          setOpenFatt(false)
-        }}
-      >
-        📂 Archivio
-      </button>
-
-      {openArchivio && (
-        <div style={subMenu}>
-          {btn("/storico-interventi", "Storico Interventi", "📂")}
-          {btn("/archivio", "Archivio Interventi", "📦")}
-          {btn("/archivio-cliente", "Archivio Cliente", "👤")}
-        </div>
-      )}
-
-      {/* FATTURAZIONE */}
-      <button
-        style={{
-          ...menuBtn,
-          background: openFatt ? "#1976d2" : "white",
-          color: openFatt ? "white" : "black",
-          border: openFatt ? "none" : "1px solid #ccc"
-        }}
-        onClick={() => {
-          chiediCodiceEApri(() => {
-            setOpenFatt(!openFatt)
-            setOpenMateriali(false)
-            setOpenArchivio(false)
-          })
-        }}
-      >
-        💰 Fatturazione
-      </button>
-
-      {openFatt && (
-        <div style={subMenu}>
+    if (menuAperto === "fatturazione") {
+      return (
+        <div style={subMenuBar}>
           {btn("/fatture", "Fatture", "💰")}
           {btn("/storico-fatture", "Storico Fatture", "📜")}
+          {btn("/archivio-cliente", "Archivio Cliente", "👤")}
           {btn("/ore-operatori-excel", "Ore Operatori", "📊")}
         </div>
-      )}
+      )
+    }
 
-    </div>
+    return null
+  }
+
+  return (
+    <>
+      <div style={menuBar}>
+        {capitolo("calendario", "Calendario", "📅")}
+        {capitolo("interventi", "Interventi", "🧾")}
+        {capitolo("anagrafiche", "Anagrafiche", "👤")}
+        {capitolo("materiali", "Materiali", "📦", true)}
+        {capitolo("fatturazione", "Fatturazione", "💰", true)}
+      </div>
+
+      {renderSottoMenu()}
+    </>
   )
 }
 
@@ -205,19 +212,26 @@ const menuBar = {
 }
 
 const menuBtn = {
-  padding: "8px 12px",
+  padding: "9px 14px",
   borderRadius: 6,
   cursor: "pointer",
   border: "1px solid #ccc",
   background: "white"
 }
 
-const subMenu = {
+const subMenuBar = {
   display: "flex",
   gap: 8,
-  marginLeft: 10,
-  flexWrap: "wrap",
-  padding: "6px 8px",
+  padding: "10px",
+  borderBottom: "1px solid #ddd",
   background: "#eeeeee",
-  borderRadius: 6
+  flexWrap: "wrap"
+}
+
+const subBtn = {
+  padding: "8px 12px",
+  borderRadius: 6,
+  cursor: "pointer",
+  border: "1px solid #ccc",
+  background: "white"
 }

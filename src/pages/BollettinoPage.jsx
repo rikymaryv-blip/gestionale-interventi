@@ -14,6 +14,7 @@ export default function BollettinoPage() {
   const [operatori, setOperatori] = useState([])
   const [materiali, setMateriali] = useState([])
   const [rifirma, setRifirma] = useState(false)
+  const [loadingMail, setLoadingMail] = useState(false)
 
   const canvasRef = useRef(null)
   const drawing = useRef(false)
@@ -23,11 +24,17 @@ export default function BollettinoPage() {
   }, [id])
 
   async function loadAll() {
-    const { data: intData } = await supabase
+    const { data: intData, error: intError } = await supabase
       .from("interventi")
-      .select(`id, data, descrizione, firma_cliente, clienti(nome)`)
+      .select(`id, data, descrizione, firma_cliente, clienti(nome,email)`)
       .eq("id", id)
       .single()
+
+    if (intError) {
+      console.error(intError)
+      alert("Errore caricamento intervento: " + intError.message)
+      return
+    }
 
     const { data: opData } = await supabase
       .from("ore_operatori")
@@ -36,7 +43,7 @@ export default function BollettinoPage() {
 
     const { data: matData } = await supabase
       .from("materiali_bollettino")
-      .select(`codice, descrizione, quantita`)
+      .select(`codice, descrizione, quantita, origine, origine_nome`)
       .eq("intervento_id", id)
 
     setIntervento(intData)
@@ -44,7 +51,6 @@ export default function BollettinoPage() {
     setMateriali(matData || [])
   }
 
-  // ✏️ FIRMA
   function startDraw(e) {
     drawing.current = true
     draw(e)
@@ -82,10 +88,15 @@ export default function BollettinoPage() {
   async function salvaFirma() {
     const base64 = canvasRef.current.toDataURL()
 
-    await supabase
+    const { error } = await supabase
       .from("interventi")
       .update({ firma_cliente: base64 })
       .eq("id", id)
+
+    if (error) {
+      alert("Errore salvataggio firma")
+      return
+    }
 
     alert("✅ Firma salvata")
     setRifirma(false)
@@ -101,10 +112,19 @@ export default function BollettinoPage() {
       "https://olmekymxlopdilkhucvf.supabase.co/functions/v1/genera-bollettino",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intervento_id: id })
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          intervento_id: id
+        })
       }
     )
+
+    if (!res.ok) {
+      alert("Errore PDF")
+      return
+    }
 
     const blob = await res.blob()
     const url = window.URL.createObjectURL(blob)
@@ -115,7 +135,84 @@ export default function BollettinoPage() {
     a.click()
   }
 
-  // 🎨 STILI
+  async function apriGmailCliente() {
+    if (loadingMail) return
+
+    if (!intervento?.clienti?.email) {
+      alert("Email cliente mancante")
+      return
+    }
+
+    setLoadingMail(true)
+
+    try {
+      const res = await fetch(
+        "https://olmekymxlopdilkhucvf.supabase.co/functions/v1/genera-bollettino",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            intervento_id: id,
+            salva_storage: true
+          })
+        }
+      )
+
+      const result = await res.json()
+
+      if (!res.ok) {
+        console.error(result)
+        alert("Errore creazione PDF")
+        return
+      }
+
+      const emailCliente = intervento.clienti.email
+      const cliente = intervento.clienti.nome || ""
+
+      const data = intervento.data
+        ? dayjs(intervento.data).format("DD/MM/YYYY")
+        : ""
+
+      const oggetto = `Bollettino intervento ${data}`
+
+      const testo = `Buongiorno ${cliente},
+
+ecco il link del bollettino intervento:
+
+${result.url}
+
+Descrizione:
+${intervento.descrizione || "-"}
+
+Cordiali saluti.`
+
+      const gmailUrl =
+        "https://mail.google.com/mail/?view=cm&fs=1" +
+        `&to=${encodeURIComponent(emailCliente)}` +
+        `&cc=${encodeURIComponent("riky.maryv@gmail.com")}` +
+        `&su=${encodeURIComponent(oggetto)}` +
+        `&body=${encodeURIComponent(testo)}`
+
+      window.open(gmailUrl, "_blank")
+
+    } catch (err) {
+      console.error(err)
+      alert("Errore apertura Gmail")
+    } finally {
+      setLoadingMail(false)
+    }
+  }
+
+  function labelOrigine(m) {
+    if (m.origine === "bolla") return "📦 Bolla"
+    if (m.origine === "carrello") return "📥 Carrello"
+    if (m.origine === "preferito") return "⭐ Preferito"
+    if (m.origine === "manuale") return "✍️ Manuale"
+    return ""
+  }
+
   const box = {
     border: "1px solid #ccc",
     borderRadius: 6,
@@ -150,24 +247,23 @@ export default function BollettinoPage() {
         📄 BOLLETTINO INTERVENTO
       </h1>
 
-      {/* INFO */}
       <div style={box}>
-        <p><b>Cliente:</b> {intervento?.clienti?.nome}</p>
-        <p><b>Data:</b> {dayjs(intervento?.data).format("DD/MM/YYYY")}</p>
-        <p><b>Descrizione:</b> {intervento?.descrizione}</p>
+        <p><b>Cliente:</b> {intervento?.clienti?.nome || "-"}</p>
+        <p><b>Email:</b> {intervento?.clienti?.email || "-"}</p>
+        <p><b>Data:</b> {intervento?.data ? dayjs(intervento.data).format("DD/MM/YYYY") : "-"}</p>
+        <p><b>Descrizione:</b> {intervento?.descrizione || "-"}</p>
       </div>
 
-      {/* OPERATORI */}
       <div style={box}>
         <h3>👷 Operatori</h3>
+
         {operatori.map((o, i) => (
           <div key={i}>
-            {o.operatori?.nome} — <b>{o.ore}h</b>
+            {o.operatori?.nome || "-"} — <b>{o.ore}h</b>
           </div>
         ))}
       </div>
 
-      {/* MATERIALI */}
       <div style={box}>
         <h3>📦 Materiali</h3>
 
@@ -188,15 +284,26 @@ export default function BollettinoPage() {
             {materiali.map((m, i) => (
               <tr key={i}>
                 <td style={tdQty}>{m.quantita}</td>
-                <td style={td}>{m.codice}</td>
-                <td style={td}>{m.descrizione}</td>
+                <td style={td}>{m.codice || "-"}</td>
+                <td style={td}>
+                  {m.descrizione || "-"}
+
+                  {(m.origine || m.origine_nome) && (
+                    <div style={{
+                      fontSize: 12,
+                      color: "#666",
+                      marginTop: 3
+                    }}>
+                      {labelOrigine(m)} {m.origine_nome || ""}
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* FIRMA */}
       <div style={box}>
         <h3>✍️ Firma Cliente</h3>
 
@@ -247,10 +354,37 @@ export default function BollettinoPage() {
 
       <hr />
 
-      <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={stampa}>🖨️ Stampa</button>
-        <button onClick={generaPDF}>📄 PDF</button>
-        <button onClick={() => navigate(-1)}>← Indietro</button>
+      <div style={{
+        display: "flex",
+        gap: 10,
+        flexWrap: "wrap"
+      }}>
+        <button onClick={stampa}>
+          🖨️ Stampa
+        </button>
+
+        <button onClick={generaPDF}>
+          📄 PDF
+        </button>
+
+        <button
+          onClick={apriGmailCliente}
+          disabled={loadingMail}
+          style={{
+            background: "#198754",
+            color: "white",
+            border: "none",
+            padding: "8px 12px",
+            borderRadius: 5,
+            cursor: loadingMail ? "not-allowed" : "pointer"
+          }}
+        >
+          {loadingMail ? "Creazione..." : "📧 Apri Gmail"}
+        </button>
+
+        <button onClick={() => navigate(-1)}>
+          ← Indietro
+        </button>
       </div>
 
     </div>

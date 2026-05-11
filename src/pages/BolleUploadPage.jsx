@@ -17,8 +17,9 @@ export default function BolleUploadPage() {
   const [interventoCorrente, setInterventoCorrente] = useState(null)
 
   const [filtroOperatore, setFiltroOperatore] = useState("")
+  const [ricercaCarrello, setRicercaCarrello] = useState("")
+  const [importando, setImportando] = useState(false)
 
-  // 🔥 DEFAULT DATE (ULTIMI 2 GIORNI)
   const oggi = new Date()
   const dueGiorniFa = new Date()
   dueGiorniFa.setDate(oggi.getDate() - 2)
@@ -29,8 +30,6 @@ export default function BolleUploadPage() {
 
   const [dataDa, setDataDa] = useState(formatDate(dueGiorniFa))
   const [dataA, setDataA] = useState(formatDate(oggi))
-
-  const [ricercaCarrello, setRicercaCarrello] = useState("")
 
   useEffect(() => {
     caricaBolle()
@@ -57,7 +56,8 @@ export default function BolleUploadPage() {
   async function caricaInterventi() {
     const { data, error } = await supabase
       .from("interventi")
-      .select("id, data, descrizione, clienti(nome)")
+      .select("id, data, descrizione, clienti(nome),email")
+      .or("archiviato.is.null,archiviato.eq.false")
       .order("data", { ascending: false })
 
     if (error) {
@@ -109,6 +109,7 @@ export default function BolleUploadPage() {
       .from("bolle_righe")
       .select("*")
       .eq("bolla_id", b.id)
+      .order("id", { ascending: true })
 
     if (error) {
       console.error(error)
@@ -121,10 +122,12 @@ export default function BolleUploadPage() {
 
   function convertiData(d) {
     if (!d) return null
+
     if (d.includes("/")) {
       const [gg, mm, aaaa] = d.split("/")
       return `${aaaa}-${mm.padStart(2, "0")}-${gg.padStart(2, "0")}`
     }
+
     return d
   }
 
@@ -242,7 +245,6 @@ export default function BolleUploadPage() {
   }
 
   async function handleFile(e) {
-
     const file = e.target.files[0]
     if (!file) return
 
@@ -253,13 +255,18 @@ export default function BolleUploadPage() {
     })
 
     const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim())
+
+    if (lines.length < 2) {
+      alert("File vuoto o non valido")
+      return
+    }
+
     const sep = lines[0].includes(";") ? ";" : ","
     const split = (line) => line.split(sep).map(v => v.trim())
 
     const grouped = {}
 
     for (let i = 1; i < lines.length; i++) {
-
       const v = split(lines[i])
 
       const ordine = (v[3] || "").trim()
@@ -296,6 +303,8 @@ export default function BolleUploadPage() {
         leggiNumero(v[20]) ||
         0
 
+      if (!codice && !descrizione) continue
+
       grouped[key].righe.push({
         codice,
         descrizione,
@@ -308,6 +317,18 @@ export default function BolleUploadPage() {
     let salvate = 0
 
     for (const b of Object.values(grouped)) {
+      if (!b.righe.length) continue
+
+      const { data: giaPresente } = await supabase
+        .from("bolle_acquisto")
+        .select("id")
+        .eq("numero_ordine", b.numero_ordine)
+        .eq("numero_ddt", b.numero_ddt)
+        .maybeSingle()
+
+      if (giaPresente?.id) {
+        continue
+      }
 
       const { data: saved, error } = await supabase
         .from("bolle_acquisto")
@@ -353,12 +374,19 @@ export default function BolleUploadPage() {
     }
 
     alert("Caricate " + salvate + " bolle e preferiti aggiornati")
+    e.target.value = ""
     caricaBolle()
   }
 
   async function importaInIntervento() {
+    if (importando) return
 
     const interventoFinale = interventoIdDaUrl || interventoSelezionato
+
+    if (!selected) {
+      alert("Seleziona una bolla")
+      return
+    }
 
     if (selected?.usata) {
       alert("⚠️ Questa bolla è già stata importata")
@@ -375,47 +403,84 @@ export default function BolleUploadPage() {
       return
     }
 
-    const materialiDaInserire = righe.map(r => ({
-      intervento_id: interventoFinale,
-      codice: r.codice,
-      descrizione: r.descrizione,
-      quantita: Number(r.quantita || 1),
-      prezzo: Number(r.prezzo || 0),
-      totale: Number(r.quantita || 1) * Number(r.prezzo || 0)
-    }))
+    setImportando(true)
 
-    const { error: insertError } = await supabase
-      .from("materiali_bollettino")
-      .insert(materialiDaInserire)
+    try {
+      const { data: materialiEsistenti, error: checkError } = await supabase
+        .from("materiali_bollettino")
+        .select("id, codice, descrizione")
+        .eq("intervento_id", interventoFinale)
 
-    if (insertError) {
-      console.error(insertError)
-      alert("Errore inserimento materiali intervento: " + insertError.message)
-      return
+      if (checkError) {
+        console.error(checkError)
+        alert("Errore controllo materiali esistenti: " + checkError.message)
+        return
+      }
+
+      const materialiGiaPresenti = new Set(
+        (materialiEsistenti || []).map(m =>
+          `${String(m.codice || "").trim()}_${String(m.descrizione || "").trim()}`
+        )
+      )
+
+      const materialiDaInserire = righe
+        .filter(r => r.codice || r.descrizione)
+        .filter(r => {
+          const key = `${String(r.codice || "").trim()}_${String(r.descrizione || "").trim()}`
+          return !materialiGiaPresenti.has(key)
+        })
+        .map(r => ({
+          intervento_id: interventoFinale,
+          codice: r.codice || "",
+          descrizione: r.descrizione || "",
+          quantita: Number(r.quantita || 1),
+          prezzo: Number(r.prezzo || 0),
+          totale: Number(r.quantita || 1) * Number(r.prezzo || 0)
+        }))
+
+      if (materialiDaInserire.length === 0) {
+        alert("Tutti i materiali di questa bolla risultano già presenti nell’intervento")
+        re
+      }
+
+      const { error: insertError } = await supabase
+        .from("materiali_bollettino")
+        .insert(materialiDaInserire)
+
+      if (insertError) {
+        console.error(insertError)
+        alert("Errore inserimento materiali intervento: " + insertError.message)
+        return
+      }
+
+
+      const { error: updateError } = await supabase
+        .from("bolle_acquisto")
+        .update({ usata: true })
+        .eq("id", selected.id)
+
+      if (updateError) {
+        console.error(updateError)
+        alert("Materiali inseriti, ma errore nel segnare la bolla come usata: " + updateError.message)
+        return
+      }
+
+      alert("✅ Materiali importati nell’intervento")
+
+      setSelected(null)
+      setRighe([])
+      caricaBolle()
+
+    } finally {
+      setImportando(false)
     }
-
-    await aggiornaPreferiti(righe)
-
-    const { error: updateError } = await supabase
-      .from("bolle_acquisto")
-      .update({ usata: true })
-      .eq("id", selected.id)
-
-    if (updateError) {
-      console.error(updateError)
-      alert("Materiali inseriti, ma errore nel segnare la bolla come usata: " + updateError.message)
-      return
-    }
-
-    alert("IMPORT OK")
-
-    setSelected(null)
-    setRighe([])
-    caricaBolle()
   }
 
   async function annullaImportazione() {
     if (!selected) return
+
+    const conferma = confirm("Vuoi riattivare questa bolla? I materiali già copiati nell’intervento NON verranno cancellati.")
+    if (!conferma) return
 
     const { error } = await supabase
       .from("bolle_acquisto")
@@ -429,11 +494,20 @@ export default function BolleUploadPage() {
     }
 
     alert("Bolla riattivata")
+    setSelected(prev => prev ? { ...prev, usata: false } : prev)
     caricaBolle()
   }
 
   const operatori = [...new Set(bolle.map(b => b.creatore_carrello).filter(Boolean))]
   const carrelli = [...new Set(bolle.map(b => b.nome_carrello).filter(Boolean))]
+
+  const bolleFiltrate = bolle.filter(b => {
+    const m1 = !filtroOperatore || b.creatore_carrello === filtroOperatore
+    const m2 = (!dataDa || b.data >= dataDa) && (!dataA || b.data <= dataA)
+    const m3 = !ricercaCarrello || (b.nome_carrello || "").toLowerCase().includes(ricercaCarrello.toLowerCase())
+
+    return m1 && m2 && m3
+  })
 
   function renderDettaglioBolla() {
     return (
@@ -498,7 +572,7 @@ export default function BolleUploadPage() {
             <option value="">Seleziona intervento</option>
             {interventi.map(i => (
               <option key={i.id} value={i.id}>
-                {i.data} - {i.clienti?.nome}
+                {i.data} - {i.clienti?.nome} - {i.descrizione}
               </option>
             ))}
           </select>
@@ -506,10 +580,18 @@ export default function BolleUploadPage() {
 
         <button
           onClick={importaInIntervento}
-          disabled={selected?.usata}
-          style={{ marginLeft: 10 }}
+          disabled={selected?.usata || importando}
+          style={{
+            marginLeft: 10,
+            background: selected?.usata ? "#ccc" : "#198754",
+            color: selected?.usata ? "black" : "white",
+            border: "none",
+            padding: "8px 12px",
+            borderRadius: 5,
+            cursor: selected?.usata || importando ? "not-allowed" : "pointer"
+          }}
         >
-          🚀 Importa
+          {importando ? "Importazione..." : "🚀 Importa"}
         </button>
 
         {(interventoIdDaUrl || interventoSelezionato) && (
@@ -534,11 +616,22 @@ export default function BolleUploadPage() {
             onClick={annullaImportazione}
             style={{ marginLeft: 10 }}
           >
-            ↩ Torna indietro
+            ↩ Riattiva bolla
           </button>
         )}
 
         <div style={{ marginTop: 12 }}>
+          {righe.length === 0 && (
+            <div style={{
+              padding: 10,
+              background: "white",
+              border: "1px solid #ddd",
+              borderRadius: 6
+            }}>
+              Nessuna riga trovata per questa bolla.
+            </div>
+          )}
+
           {righe.map((r, i) => (
             <div
               key={i}
@@ -550,9 +643,9 @@ export default function BolleUploadPage() {
                 padding: "6px 0"
               }}
             >
-              <div>{r.codice}</div>
-              <div>{r.descrizione}</div>
-              <div>Qta: {r.quantita}</div>
+              <div>{r.codice || "-"}</div>
+              <div>{r.descrizione || "-"}</div>
+              <div>Qta: {r.quantita || 0}</div>
             </div>
           ))}
         </div>
@@ -628,7 +721,9 @@ export default function BolleUploadPage() {
 
         <select value={filtroOperatore} onChange={(e) => setFiltroOperatore(e.target.value)}>
           <option value="">Tutti operatori</option>
-          {operatori.map(op => <option key={op}>{op}</option>)}
+          {operatori.map(op => (
+            <option key={op} value={op}>{op}</option>
+          ))}
         </select>
 
         <span>Da:</span>
@@ -645,15 +740,31 @@ export default function BolleUploadPage() {
           />
 
           {ricercaCarrello && (
-            <div style={{ position: "absolute", background: "white", border: "1px solid #ccc", zIndex: 20 }}>
+            <div style={{
+              position: "absolute",
+              background: "white",
+              border: "1px solid #ccc",
+              zIndex: 20,
+              minWidth: 220
+            }}>
               {carrelli
                 .filter(c => c.toLowerCase().includes(ricercaCarrello.toLowerCase()))
                 .slice(0, 10)
                 .map((c, i) => (
-                  <div key={i} onClick={() => setRicercaCarrello(c)}>
+                  <div
+                    key={i}
+                    onClick={() => setRicercaCarrello(c)}
+                    style={{ padding: 6, cursor: "pointer" }}
+                  >
                     {c}
                   </div>
                 ))}
+
+              {carrelli.filter(c => c.toLowerCase().includes(ricercaCarrello.toLowerCase())).length === 0 && (
+                <div style={{ padding: 6, color: "#777" }}>
+                  Nessun carrello trovato
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -667,40 +778,52 @@ export default function BolleUploadPage() {
           Reset
         </button>
 
+        <button onClick={caricaBolle}>
+          🔄 Aggiorna
+        </button>
+
+        <span>
+          Risultati: <b>{bolleFiltrate.length}</b>
+        </span>
+
       </div>
 
       <hr />
 
-      {bolle
-        .filter(b => {
-          const m1 = !filtroOperatore || b.creatore_carrello === filtroOperatore
-          const m2 = (!dataDa || b.data >= dataDa) && (!dataA || b.data <= dataA)
-          const m3 = !ricercaCarrello || (b.nome_carrello || "").toLowerCase().includes(ricercaCarrello.toLowerCase())
-          return m1 && m2 && m3
-        })
-        .map(b => (
-          <div key={b.id}>
-            <div
-              onClick={() => apriBolla(b)}
-              style={{
-                border: selected?.id === b.id ? "2px solid #0d6efd" : b.usata ? "2px solid green" : "1px solid #ccc",
-                background: b.usata ? "#e8f5e9" : selected?.id === b.id ? "#e7f1ff" : "white",
-                padding: 10,
-                marginTop: 5,
-                cursor: "pointer",
-                borderRadius: 6
-              }}
-            >
-              <b>{b.numero_ordine}</b> | DDT: {b.numero_ddt}
-              <div>📅 {b.data}</div>
-              <div>👤 {b.creatore_carrello}</div>
-              <div>📦 {b.nome_carrello}</div>
-              {b.usata && <span>✅ USATA</span>}
-            </div>
+      {bolleFiltrate.length === 0 && (
+        <div style={{
+          padding: 12,
+          border: "1px solid #ddd",
+          borderRadius: 6,
+          background: "#fff"
+        }}>
+          Nessuna bolla trovata.
+        </div>
+      )}
 
-            {selected?.id === b.id && renderDettaglioBolla()}
+      {bolleFiltrate.map(b => (
+        <div key={b.id}>
+          <div
+            onClick={() => apriBolla(b)}
+            style={{
+              border: selected?.id === b.id ? "2px solid #0d6efd" : b.usata ? "2px solid green" : "1px solid #ccc",
+              background: b.usata ? "#e8f5e9" : selected?.id === b.id ? "#e7f1ff" : "white",
+              padding: 10,
+              marginTop: 5,
+              cursor: "pointer",
+              borderRadius: 6
+            }}
+          >
+            <b>{b.numero_ordine}</b> | DDT: {b.numero_ddt}
+            <div>📅 {b.data || "-"}</div>
+            <div>👤 {b.creatore_carrello || "-"}</div>
+            <div>📦 {b.nome_carrello || "-"}</div>
+            {b.usata && <span>✅ USATA</span>}
           </div>
-        ))}
+
+          {selected?.id === b.id && renderDettaglioBolla()}
+        </div>
+      ))}
 
     </div>
   )

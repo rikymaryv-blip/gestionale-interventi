@@ -11,7 +11,8 @@ export default function ArchivioInterventiPage() {
   const [loading, setLoading] = useState(false)
 
   const [filtroCliente, setFiltroCliente] = useState("")
-  const [filtroData, setFiltroData] = useState("")
+  const [dataDa, setDataDa] = useState("")
+  const [dataA, setDataA] = useState("")
 
   useEffect(() => {
     load()
@@ -48,6 +49,8 @@ export default function ArchivioInterventiPage() {
   }
 
   async function ripristinaIntervento(i) {
+    if (!i?.id) return
+
     if (!confirm("Vuoi ripristinare questo intervento negli interventi salvati?")) return
 
     const { error } = await supabase
@@ -65,8 +68,34 @@ export default function ArchivioInterventiPage() {
     load()
   }
 
+  async function ripristinaEApriInterventi(i) {
+    if (!i?.id) return
+
+    if (!confirm("Vuoi ripristinare questo intervento e aprirlo in modifica?")) return
+
+    const { error } = await supabase
+      .from("interventi")
+      .update({ archiviato: false })
+      .eq("id", i.id)
+
+    if (error) {
+      console.error(error)
+      alert("Errore ripristino intervento: " + error.message)
+      return
+    }
+
+    navigate(`/interventi?edit_id=${i.id}`)
+  }
+
   async function eliminaIntervento(i) {
+    if (!i?.id) return
+
     if (!confirm("Eliminare definitivamente questo intervento?")) return
+
+    const conferma2 = confirm(
+      "Sei sicuro? Questa operazione cancella anche ore operatori e materiali collegati."
+    )
+    if (!conferma2) return
 
     const { error: errorOre } = await supabase
       .from("ore_operatori")
@@ -101,25 +130,8 @@ export default function ArchivioInterventiPage() {
       return
     }
 
-    alert("Intervento eliminato")
+    alert("✅ Intervento eliminato")
     load()
-  }
-
-  async function ripristinaEApriInterventi(i) {
-    if (!confirm("Vuoi ripristinare questo intervento e tornare alla pagina Interventi?")) return
-
-    const { error } = await supabase
-      .from("interventi")
-      .update({ archiviato: false })
-      .eq("id", i.id)
-
-    if (error) {
-      console.error(error)
-      alert("Errore ripristino intervento: " + error.message)
-      return
-    }
-
-    navigate("/interventi")
   }
 
   const interventiFiltrati = interventi.filter(i => {
@@ -127,9 +139,11 @@ export default function ArchivioInterventiPage() {
     const testoCliente = filtroCliente.toLowerCase().trim()
 
     const matchCliente = !testoCliente || nomeCliente.includes(testoCliente)
-    const matchData = !filtroData || i.data === filtroData
 
-    return matchCliente && matchData
+    const matchDataDa = !dataDa || i.data >= dataDa
+    const matchDataA = !dataA || i.data <= dataA
+
+    return matchCliente && matchDataDa && matchDataA
   })
 
   return (
@@ -144,7 +158,7 @@ export default function ArchivioInterventiPage() {
         borderRadius: 6,
         marginBottom: 15
       }}>
-        Qui trovi gli interventi che hai spostato in archivio.
+        Qui trovi gli interventi archiviati.
         <br />
         Non sono cancellati: puoi aprirli, importare materiali, ripristinarli o eliminarli.
       </div>
@@ -165,6 +179,7 @@ export default function ArchivioInterventiPage() {
         flexWrap: "wrap",
         alignItems: "center"
       }}>
+
         <input
           placeholder="🔍 Cerca cliente..."
           value={filtroCliente}
@@ -177,10 +192,25 @@ export default function ArchivioInterventiPage() {
           }}
         />
 
+        <span>Da:</span>
+
         <input
           type="date"
-          value={filtroData}
-          onChange={(e) => setFiltroData(e.target.value)}
+          value={dataDa}
+          onChange={(e) => setDataDa(e.target.value)}
+          style={{
+            padding: 7,
+            border: "1px solid #ccc",
+            borderRadius: 5
+          }}
+        />
+
+        <span>A:</span>
+
+        <input
+          type="date"
+          value={dataA}
+          onChange={(e) => setDataA(e.target.value)}
           style={{
             padding: 7,
             border: "1px solid #ccc",
@@ -191,10 +221,15 @@ export default function ArchivioInterventiPage() {
         <button
           onClick={() => {
             setFiltroCliente("")
-            setFiltroData("")
+            setDataDa("")
+            setDataA("")
           }}
         >
           Reset filtri
+        </button>
+
+        <button onClick={load}>
+          🔄 Aggiorna
         </button>
 
         <span>
@@ -278,6 +313,10 @@ export default function ArchivioInterventiPage() {
 
             <button onClick={() => navigate(`/carrelli?intervento_id=${i.id}`)}>
               📥 Carrello
+            </button>
+
+            <button onClick={() => navigate(`/preferiti?intervento_id=${i.id}`)}>
+              ⭐ Preferiti
             </button>
 
             <button

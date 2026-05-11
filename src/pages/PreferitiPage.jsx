@@ -11,8 +11,10 @@ export default function PreferitiPage() {
 
   const [preferiti, setPreferiti] = useState([])
   const [ricerca, setRicerca] = useState("")
+  const [produttore, setProduttore] = useState("")
   const [quantita, setQuantita] = useState({})
   const [soloConPrezzo, setSoloConPrezzo] = useState(false)
+  const [importandoId, setImportandoId] = useState(null)
 
   useEffect(() => {
     caricaPreferiti()
@@ -57,7 +59,26 @@ export default function PreferitiPage() {
     return new Date(v).toLocaleDateString("it-IT")
   }
 
+  async function aggiornaStatistichePreferito(item, qta) {
+    const { error } = await supabase
+      .from("articoli_preferiti")
+      .update({
+        volte_usato: Number(item.volte_usato || 0) + 1,
+        quantita_totale: Number(item.quantita_totale || 0) + Number(qta || 0),
+        ultimo_utilizzo: new Date().toISOString()
+      })
+      .eq("id", item.id)
+
+    if (error) {
+      console.error(error)
+      alert("Materiale importato, ma errore aggiornamento statistiche preferito: " + error.message)
+      return
+    }
+  }
+
   async function importaPreferito(item) {
+    if (importandoId) return
+
     if (!interventoId) {
       alert("Intervento non trovato. Torna negli interventi e riapri Preferiti da lì.")
       return
@@ -72,28 +93,73 @@ export default function PreferitiPage() {
       return
     }
 
-    const { error } = await supabase
-      .from("materiali_bollettino")
-      .insert({
-        intervento_id: interventoId,
-        codice: item.codice || "",
-        descrizione: item.descrizione || "",
-        quantita: qta,
-        prezzo,
-        totale
+    setImportandoId(item.id)
+
+    try {
+      const { data: materialiEsistenti, error: checkError } = await supabase
+        .from("materiali_bollettino")
+        .select("id, codice, descrizione")
+        .eq("intervento_id", interventoId)
+
+      if (checkError) {
+        console.error(checkError)
+        alert("Errore controllo materiali esistenti: " + checkError.message)
+        return
+      }
+
+      const codiceItem = String(item.codice || "").trim()
+      const descrizioneItem = String(item.descrizione || "").trim()
+
+      const giaPresente = (materialiEsistenti || []).some(m => {
+        const codiceM = String(m.codice || "").trim()
+        const descrizioneM = String(m.descrizione || "").trim()
+
+        if (codiceItem && codiceM && codiceItem === codiceM) return true
+        if (!codiceItem && descrizioneItem && descrizioneM === descrizioneItem) return true
+
+        return false
       })
 
-    if (error) {
-      console.error(error)
-      alert("Errore importazione materiale: " + error.message)
-      return
-    }
+      if (giaPresente) {
+        alert("Questo materiale è già presente nell’intervento")
+        return
+      }
 
-    alert("✅ Materiale importato nell’intervento")
+      const { error } = await supabase
+        .from("materiali_bollettino")
+        .insert({
+          intervento_id: interventoId,
+          codice: item.codice || "",
+          descrizione: item.descrizione || "",
+          quantita: qta,
+          prezzo,
+          totale
+        })
+
+      if (error) {
+        console.error(error)
+        alert("Errore importazione materiale: " + error.message)
+        return
+      }
+
+      await aggiornaStatistichePreferito(item, qta)
+
+      setQuantita(prev => ({
+        ...prev,
+        [item.id]: 1
+      }))
+
+      alert("✅ Materiale importato nell’intervento")
+      caricaPreferiti()
+
+    } finally {
+      setImportandoId(null)
+    }
   }
 
   const preferitiFiltrati = preferiti.filter(p => {
     const testo = ricerca.toLowerCase().trim()
+    const testoProduttore = produttore.toLowerCase().trim()
 
     const codice = p.codice?.toLowerCase() || ""
     const descrizione = p.descrizione?.toLowerCase() || ""
@@ -103,10 +169,15 @@ export default function PreferitiPage() {
       codice.includes(testo) ||
       descrizione.includes(testo)
 
+    const matchProduttore =
+      !testoProduttore ||
+      codice.includes(testoProduttore) ||
+      descrizione.includes(testoProduttore)
+
     const matchPrezzo =
       !soloConPrezzo || Number(p.prezzo || 0) > 0
 
-    return matchTesto && matchPrezzo
+    return matchTesto && matchProduttore && matchPrezzo
   })
 
   return (
@@ -179,6 +250,18 @@ export default function PreferitiPage() {
           }}
         />
 
+        <input
+          placeholder="Produttore..."
+          value={produttore}
+          onChange={(e) => setProduttore(e.target.value)}
+          style={{
+            minWidth: 190,
+            padding: 8,
+            border: "1px solid #ccc",
+            borderRadius: 5
+          }}
+        />
+
         <label style={{
           display: "flex",
           gap: 6,
@@ -195,6 +278,7 @@ export default function PreferitiPage() {
         <button
           onClick={() => {
             setRicerca("")
+            setProduttore("")
             setSoloConPrezzo(false)
           }}
         >
@@ -209,6 +293,18 @@ export default function PreferitiPage() {
       <div style={{ marginTop: 10 }}>
         Risultati: <b>{preferitiFiltrati.length}</b>
       </div>
+
+      {preferitiFiltrati.length === 0 && (
+        <div style={{
+          marginTop: 12,
+          padding: 12,
+          border: "1px solid #ddd",
+          borderRadius: 6,
+          background: "#fff"
+        }}>
+          Nessun preferito trovato.
+        </div>
+      )}
 
       {preferitiFiltrati.map(item => (
         <div
@@ -264,6 +360,7 @@ export default function PreferitiPage() {
             <>
               <input
                 type="number"
+                min="1"
                 value={quantita[item.id] || 1}
                 onChange={(e) => setQuantita(prev => ({
                   ...prev,
@@ -272,8 +369,11 @@ export default function PreferitiPage() {
                 style={{ width: 80, padding: 6 }}
               />
 
-              <button onClick={() => importaPreferito(item)}>
-                ➕ Importa
+              <button
+                onClick={() => importaPreferito(item)}
+                disabled={importandoId === item.id}
+              >
+                {importandoId === item.id ? "Importo..." : "➕ Importa"}
               </button>
             </>
           )}

@@ -23,6 +23,9 @@ import StoricoInterventiPage from "./pages/StoricoInterventiPage"
 import CarrelliPage from "./pages/CarrelliPage"
 import PreferitiPage from "./pages/PreferitiPage"
 import OreOperatoriExcelPage from "./pages/OreOperatoriExcelPage"
+import PuntiLucePage from "./pages/PuntiLucePage"
+import PuntiLuceVociPage from "./pages/PuntiLuceVociPage"
+import PuntiLuceStanzeTipoPage from "./pages/PuntiLuceStanzeTipoPage"
 
 // MENU
 function Menu() {
@@ -111,6 +114,16 @@ function Menu() {
       )
     }
 
+    if (menuAperto === "punti_luce") {
+      return (
+        <div style={subMenuBar}>
+          {btn("/punti-luce", "Progetto Punti Luce", "💡")}
+          {btn("/punti-luce-voci", "Voci Punti Luce", "⚙️")}
+          {btn("/punti-luce-stanze-tipo", "Stanze Tipo", "🏠")}
+        </div>
+      )
+    }
+
     if (menuAperto === "anagrafiche") {
       return (
         <div style={subMenuBar}>
@@ -150,6 +163,7 @@ function Menu() {
       <div style={menuBar}>
         {capitolo("calendario", "Calendario", "📅")}
         {capitolo("interventi", "Interventi", "🧾")}
+        {capitolo("punti_luce", "Punti Luce", "💡")}
         {capitolo("anagrafiche", "Anagrafiche", "👤")}
         {capitolo("materiali", "Materiali", "📦", true)}
         {capitolo("fatturazione", "Fatturazione", "💰", true)}
@@ -164,7 +178,6 @@ function Menu() {
 export default function App() {
   return (
     <Router>
-
       <Menu />
 
       <div
@@ -177,6 +190,9 @@ export default function App() {
         <Routes>
           <Route path="/" element={<CalendarMonth />} />
           <Route path="/interventi" element={<InterventiPage />} />
+          <Route path="/punti-luce" element={<PuntiLucePage />} />
+          <Route path="/punti-luce-voci" element={<PuntiLuceVociPage />} />
+          <Route path="/punti-luce-stanze-tipo" element={<PuntiLuceStanzeTipoPage />} />
           <Route path="/clienti" element={<ClientiPage />} />
           <Route path="/listino" element={<ListinoPage />} />
           <Route path="/bollettino/:id" element={<BollettinoPage />} />
@@ -196,7 +212,6 @@ export default function App() {
           <Route path="/storico-interventi" element={<StoricoInterventiPage />} />
         </Routes>
       </div>
-
     </Router>
   )
 }

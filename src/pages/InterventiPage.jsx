@@ -56,25 +56,41 @@ export default function InterventiPage() {
   }, [editIdDaUrl, aperturaAutomaticaFatta])
 
   async function loadAll() {
-    const { data: cli } = await supabase
+    const { data: cli, error: cliError } = await supabase
       .from("clienti")
       .select("*")
       .eq("attivo", true)
+      .order("nome")
 
-    const { data: op } = await supabase
+    if (cliError) {
+      console.error(cliError)
+      alert("Errore caricamento clienti: " + cliError.message)
+    }
+
+    const { data: op, error: opError } = await supabase
       .from("operatori")
       .select("*")
       .order("nome")
+
+    if (opError) {
+      console.error(opError)
+      alert("Errore caricamento operatori: " + opError.message)
+    }
 
     setClienti(cli || [])
     setOperatoriDB(op || [])
   }
 
   async function caricaPreferiti() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("articoli_preferiti")
       .select("*")
       .limit(500)
+
+    if (error) {
+      console.error(error)
+      return
+    }
 
     setPreferiti(data || [])
   }
@@ -132,22 +148,46 @@ export default function InterventiPage() {
 
     setShowClienti(false)
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("cantieri")
       .select("*")
       .eq("cliente_id", c.id)
+      .order("nome")
+
+    if (error) {
+      console.error(error)
+      alert("Errore caricamento cantieri: " + error.message)
+      return
+    }
 
     setCantieri(data || [])
   }
 
   function aggiungiMateriale(item) {
     setForm(prev => {
-      const esistente = prev.materiali.find(m => m.codice === item.codice)
-      if (esistente) return prev
+      const codice = item.codice || ""
+      const descrizione = item.descrizione || ""
+
+      const esistente = prev.materiali.find(m =>
+        (codice && m.codice === codice) ||
+        (!codice && descrizione && m.descrizione === descrizione)
+      )
+
+      if (esistente) {
+        alert("Materiale già inserito")
+        return prev
+      }
 
       return {
         ...prev,
-        materiali: [...prev.materiali, { ...item, quantita: 1 }]
+        materiali: [
+          ...prev.materiali,
+          {
+            codice,
+            descrizione,
+            quantita: 1
+          }
+        ]
       }
     })
   }
@@ -160,9 +200,16 @@ export default function InterventiPage() {
   }
 
   function aggiornaQuantitaMateriale(index, valore) {
-    const newMats = [...form.materiali]
-    newMats[index].quantita = Number(valore)
-    setForm(prev => ({ ...prev, materiali: newMats }))
+    const quantita = Number(valore)
+
+    setForm(prev => ({
+      ...prev,
+      materiali: prev.materiali.map((m, i) =>
+        i === index
+          ? { ...m, quantita: quantita > 0 ? quantita : 1 }
+          : m
+      )
+    }))
   }
 
   function aggiungiMaterialeManuale() {
@@ -175,6 +222,16 @@ export default function InterventiPage() {
       return
     }
 
+    const esisteGia = form.materiali.some(m =>
+      (codice && m.codice === codice) ||
+      (!codice && descrizione && m.descrizione === descrizione)
+    )
+
+    if (esisteGia) {
+      alert("Materiale già inserito")
+      return
+    }
+
     setForm(prev => ({
       ...prev,
       materiali: [
@@ -182,7 +239,7 @@ export default function InterventiPage() {
         {
           codice,
           descrizione,
-          quantita
+          quantita: quantita > 0 ? quantita : 1
         }
       ]
     }))
@@ -204,14 +261,19 @@ export default function InterventiPage() {
   }
 
   function aggiornaOperatore(i, campo, valore) {
-    const newOps = [...form.operatori]
-    newOps[i][campo] = valore
-    setForm(prev => ({ ...prev, operatori: newOps }))
+    setForm(prev => ({
+      ...prev,
+      operatori: prev.operatori.map((op, index) =>
+        index === i ? { ...op, [campo]: valore } : op
+      )
+    }))
   }
 
   function eliminaOperatore(i) {
-    const newOps = form.operatori.filter((_, idx) => idx !== i)
-    setForm(prev => ({ ...prev, operatori: newOps }))
+    setForm(prev => ({
+      ...prev,
+      operatori: prev.operatori.filter((_, idx) => idx !== i)
+    }))
   }
 
   function nuovoIntervento() {
@@ -244,6 +306,7 @@ export default function InterventiPage() {
   }
 
   async function modificaIntervento(i) {
+    if (!i?.id) return
 
     setEditingId(i.id)
 
@@ -270,19 +333,19 @@ export default function InterventiPage() {
     }
 
     setForm({
-      cliente_id: i.cliente_id,
+      cliente_id: i.cliente_id || "",
       cliente_nome: i.clienti?.nome || "",
       cantiere_id: i.cantiere_id || "",
-      data: i.data,
-      descrizione: i.descrizione,
+      data: i.data || dayjs().format("YYYY-MM-DD"),
+      descrizione: i.descrizione || "",
       operatori: (ops || []).map(o => ({
         operatore_id: o.operatore_id,
         ore: o.ore
       })),
       materiali: (mats || []).map(m => ({
-        codice: m.codice,
-        descrizione: m.descrizione,
-        quantita: m.quantita
+        codice: m.codice || "",
+        descrizione: m.descrizione || "",
+        quantita: m.quantita || 1
       }))
     })
 
@@ -295,10 +358,17 @@ export default function InterventiPage() {
     setShowAltroMat(false)
 
     if (i.cliente_id) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("cantieri")
         .select("*")
         .eq("cliente_id", i.cliente_id)
+        .order("nome")
+
+      if (error) {
+        console.error(error)
+        alert("Errore caricamento cantieri: " + error.message)
+        return
+      }
 
       setCantieri(data || [])
     }
@@ -307,6 +377,8 @@ export default function InterventiPage() {
   }
 
   async function archiviaIntervento(i) {
+    if (!i?.id) return
+
     if (!confirm("Archiviare questo intervento?")) return
 
     const { error } = await supabase
@@ -321,9 +393,78 @@ export default function InterventiPage() {
     }
 
     if (editingId === i.id) {
-      nuovoIntervento()
+      setEditingId(null)
+      setForm({
+        cliente_id: "",
+        cliente_nome: "",
+        cantiere_id: "",
+        data: dayjs().format("YYYY-MM-DD"),
+        descrizione: "",
+        operatori: [],
+        materiali: []
+      })
+      setCantieri([])
     }
 
+    caricaInterventi()
+  }
+
+  async function eliminaIntervento(i) {
+    if (!i?.id) return
+
+    if (!confirm("Eliminare intervento?")) return
+
+    const conferma2 = confirm("Sei sicuro? Verranno eliminate anche ore operatori e materiali.")
+    if (!conferma2) return
+
+    const { error: errorOre } = await supabase
+      .from("ore_operatori")
+      .delete()
+      .eq("intervento_id", i.id)
+
+    if (errorOre) {
+      console.error(errorOre)
+      alert("Errore eliminazione ore operatori: " + errorOre.message)
+      return
+    }
+
+    const { error: errorMateriali } = await supabase
+      .from("materiali_bollettino")
+      .delete()
+      .eq("intervento_id", i.id)
+
+    if (errorMateriali) {
+      console.error(errorMateriali)
+      alert("Errore eliminazione materiali: " + errorMateriali.message)
+      return
+    }
+
+    const { error: errorIntervento } = await supabase
+      .from("interventi")
+      .delete()
+      .eq("id", i.id)
+
+    if (errorIntervento) {
+      console.error(errorIntervento)
+      alert("Errore eliminazione intervento: " + errorIntervento.message)
+      return
+    }
+
+    if (editingId === i.id) {
+      setEditingId(null)
+      setForm({
+        cliente_id: "",
+        cliente_nome: "",
+        cantiere_id: "",
+        data: dayjs().format("YYYY-MM-DD"),
+        descrizione: "",
+        operatori: [],
+        materiali: []
+      })
+      setCantieri([])
+    }
+
+    alert("✅ Intervento eliminato")
     caricaInterventi()
   }
 
@@ -355,11 +496,17 @@ export default function InterventiPage() {
   }
 
   async function salva() {
-
     if (saving) return
 
-    if (!form.cliente_id) return alert("Cliente mancante")
-    if (!form.descrizione) return alert("Descrizione mancante")
+    if (!form.cliente_id) {
+      alert("Cliente mancante")
+      return
+    }
+
+    if (!form.descrizione.trim()) {
+      alert("Descrizione mancante")
+      return
+    }
 
     setSaving(true)
 
@@ -373,14 +520,14 @@ export default function InterventiPage() {
             cliente_id: form.cliente_id,
             cantiere_id: form.cantiere_id || null,
             data: form.data,
-            descrizione: form.descrizione
+            descrizione: form.descrizione.trim(),
+            archiviato: false
           })
           .eq("id", editingId)
 
         if (updateError) {
           console.error(updateError)
           alert("Errore aggiornamento intervento: " + updateError.message)
-          setSaving(false)
           return
         }
 
@@ -394,7 +541,6 @@ export default function InterventiPage() {
         if (delOpsError) {
           console.error(delOpsError)
           alert("Errore aggiornamento operatori: " + delOpsError.message)
-          setSaving(false)
           return
         }
 
@@ -406,7 +552,6 @@ export default function InterventiPage() {
         if (delMatsError) {
           console.error(delMatsError)
           alert("Errore aggiornamento materiali: " + delMatsError.message)
-          setSaving(false)
           return
         }
 
@@ -417,7 +562,7 @@ export default function InterventiPage() {
             cliente_id: form.cliente_id,
             cantiere_id: form.cantiere_id || null,
             data: form.data,
-            descrizione: form.descrizione,
+            descrizione: form.descrizione.trim(),
             archiviato: false
           }])
           .select()
@@ -426,7 +571,6 @@ export default function InterventiPage() {
         if (insertError) {
           console.error(insertError)
           alert("Errore salvataggio intervento: " + insertError.message)
-          setSaving(false)
           return
         }
 
@@ -449,7 +593,6 @@ export default function InterventiPage() {
         if (opsInsertError) {
           console.error(opsInsertError)
           alert("Errore salvataggio operatori: " + opsInsertError.message)
-          setSaving(false)
           return
         }
       }
@@ -458,9 +601,9 @@ export default function InterventiPage() {
         .filter(m => m.codice || m.descrizione)
         .map(m => ({
           intervento_id: int.id,
-          codice: m.codice,
-          descrizione: m.descrizione,
-          quantita: Number(m.quantita || 1)
+          codice: m.codice || "",
+          descrizione: m.descrizione || "",
+          quantita: Number(m.quantita || 1) > 0 ? Number(m.quantita || 1) : 1
         }))
 
       if (mats.length) {
@@ -471,23 +614,26 @@ export default function InterventiPage() {
         if (matsInsertError) {
           console.error(matsInsertError)
           alert("Errore salvataggio materiali: " + matsInsertError.message)
-          setSaving(false)
           return
         }
       }
 
       setEditingId(int.id)
 
-      alert(editingId ? "✅ Intervento aggiornato" : "✅ Intervento salvato. Ora puoi importare bolle, carrelli o preferiti dentro questo intervento.")
+      alert(editingId
+        ? "✅ Intervento aggiornato"
+        : "✅ Intervento salvato. Ora puoi importare bolle, carrelli o preferiti dentro questo intervento."
+      )
 
       caricaInterventi()
+      navigate(`/interventi?edit_id=${int.id}`)
 
     } catch (err) {
       console.error(err)
       alert("Errore imprevisto durante il salvataggio")
+    } finally {
+      setSaving(false)
     }
-
-    setSaving(false)
   }
 
   return (
@@ -512,15 +658,16 @@ export default function InterventiPage() {
         </div>
       )}
 
-      {/* CLIENTE */}
       <div style={{ position: "relative" }}>
         <input
           placeholder="Cerca cliente..."
           value={form.cliente_nome}
           onChange={(e) => {
-            setForm({ ...form, cliente_nome: e.target.value, cliente_id: "" })
+            setForm({ ...form, cliente_nome: e.target.value, cliente_id: "", cantiere_id: "" })
+            setCantieri([])
             setShowClienti(true)
           }}
+          onFocus={() => setShowClienti(true)}
           onBlur={() => setTimeout(() => setShowClienti(false), 200)}
         />
 
@@ -544,6 +691,12 @@ export default function InterventiPage() {
                   {c.nome}
                 </div>
               ))}
+
+            {clienti.filter(c => c.nome.toLowerCase().includes(form.cliente_nome.toLowerCase())).length === 0 && (
+              <div style={{ padding: 5, color: "#777" }}>
+                Nessun cliente trovato
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -586,6 +739,8 @@ export default function InterventiPage() {
 
           <input
             type="number"
+            min="0"
+            step="0.5"
             placeholder="Ore"
             value={op.ore}
             onChange={e => aggiornaOperatore(i, "ore", e.target.value)}
@@ -646,7 +801,6 @@ export default function InterventiPage() {
         )}
       </div>
 
-      {/* PULSANTI IMPORTAZIONE MATERIALI */}
       <div style={{
         marginTop: 18,
         display: "flex",
@@ -726,6 +880,7 @@ export default function InterventiPage() {
 
           <input
             type="number"
+            min="1"
             placeholder="Qta"
             value={altroMat.quantita}
             onChange={(e) => setAltroMat(prev => ({ ...prev, quantita: e.target.value }))}
@@ -735,6 +890,18 @@ export default function InterventiPage() {
           <button onClick={aggiungiMaterialeManuale}>
             ➕ Altro
           </button>
+        </div>
+      )}
+
+      {form.materiali.length === 0 && (
+        <div style={{
+          marginTop: 10,
+          padding: 8,
+          border: "1px solid #eee",
+          background: "#fafafa",
+          borderRadius: 6
+        }}>
+          Nessun materiale inserito.
         </div>
       )}
 
@@ -750,11 +917,12 @@ export default function InterventiPage() {
           }}
         >
           <div style={{ flex: 1 }}>
-            {m.codice} — {m.descrizione}
+            {m.codice || "-"} — {m.descrizione || "-"}
           </div>
 
           <input
             type="number"
+            min="1"
             value={m.quantita}
             onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
             style={{ width: 70 }}
@@ -768,6 +936,18 @@ export default function InterventiPage() {
 
       <h3 style={{ marginTop: 30 }}>📋 Interventi salvati</h3>
 
+      {interventi.length === 0 && (
+        <div style={{
+          marginTop: 10,
+          padding: 12,
+          border: "1px solid #ddd",
+          borderRadius: 6,
+          background: "#fff"
+        }}>
+          Nessun intervento salvato.
+        </div>
+      )}
+
       {interventi.map(i => (
         <div key={i.id} style={{
           border: editingId === i.id ? "2px solid orange" : "1px solid #ccc",
@@ -776,9 +956,10 @@ export default function InterventiPage() {
           borderRadius: 6,
           background: editingId === i.id ? "#fffaf0" : "white"
         }}>
-          <div><b>{i.data}</b></div>
+          <div><b>{i.data ? dayjs(i.data).format("DD/MM/YYYY") : "-"}</b></div>
           <div><b>Cliente:</b> {i.clienti?.nome || "-"}</div>
-          <div><b>Descrizione:</b> {i.descrizione}</div>
+          <div><b>Cantiere:</b> {i.cantieri?.nome || "-"}</div>
+          <div><b>Descrizione:</b> {i.descrizione || "-"}</div>
           <div><b>Materiali:</b> {i.materiali_bollettino?.length || 0}</div>
 
           <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -811,19 +992,7 @@ export default function InterventiPage() {
             </button>
 
             <button
-              onClick={async () => {
-                if (!confirm("Eliminare intervento?")) return
-
-                await supabase.from("ore_operatori").delete().eq("intervento_id", i.id)
-                await supabase.from("materiali_bollettino").delete().eq("intervento_id", i.id)
-                await supabase.from("interventi").delete().eq("id", i.id)
-
-                if (editingId === i.id) {
-                  nuovoIntervento()
-                }
-
-                caricaInterventi()
-              }}
+              onClick={() => eliminaIntervento(i)}
               style={{ background: "red", color: "white" }}
             >
               🗑 Elimina

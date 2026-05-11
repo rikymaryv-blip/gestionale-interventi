@@ -79,7 +79,6 @@ export default function OreOperatoriExcelPage() {
       `)
       .gte("interventi.data", dataDa)
       .lt("interventi.data", dataA)
-      .order("id", { ascending: true })
 
     if (operatoreId) {
       query = query.eq("operatore_id", operatoreId)
@@ -104,6 +103,14 @@ export default function OreOperatoriExcelPage() {
       descrizione: r.interventi?.descrizione || ""
     }))
 
+    dettagli.sort((a, b) => {
+      if (a.data === b.data) {
+        return a.descrizione.localeCompare(b.descrizione)
+      }
+
+      return a.data.localeCompare(b.data)
+    })
+
     setRighe(dettagli)
     setLoading(false)
   }
@@ -124,23 +131,60 @@ export default function OreOperatoriExcelPage() {
       .map(data => ({
         data,
         data_it: gruppi[data][0]?.data_it || "",
-        righe: gruppi[data].sort((a, b) => a.cliente.localeCompare(b.cliente))
+        righe: gruppi[data].sort((a, b) => {
+          if (a.descrizione === b.descrizione) {
+            return a.operatore.localeCompare(b.operatore)
+          }
+
+          return a.descrizione.localeCompare(b.descrizione)
+        })
       }))
   }
 
-  function applicaBordoCella(cella, tipo = "thin") {
+  function applicaBordoCella(cella, tipo = "thin", colore = "D0D7DE") {
     cella.border = {
-      top: { style: tipo },
-      left: { style: tipo },
-      bottom: { style: tipo },
-      right: { style: tipo }
+      top: { style: tipo, color: { argb: colore } },
+      left: { style: tipo, color: { argb: colore } },
+      bottom: { style: tipo, color: { argb: colore } },
+      right: { style: tipo, color: { argb: colore } }
     }
   }
 
-  function applicaBordiRiga(ws, numeroRiga, daColonna = 1, aColonna = 3) {
-    for (let c = daColonna; c <= aColonna; c++) {
-      applicaBordoCella(ws.getRow(numeroRiga).getCell(c))
+  function stileIntestazione(cella) {
+    cella.font = {
+      bold: true,
+      color: { argb: "FFFFFFFF" },
+      size: 11
     }
+
+    cella.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF1F4E78" }
+    }
+
+    cella.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true
+    }
+
+    applicaBordoCella(cella, "thin", "FF1F4E78")
+  }
+
+  function stileCellaNormale(cella, allineamento = "left") {
+    cella.font = {
+      size: 11,
+      color: { argb: "FF000000" }
+    }
+
+    cella.alignment = {
+      horizontal: allineamento,
+      vertical: "middle",
+      wrapText: true
+    }
+
+    applicaBordoCella(cella)
   }
 
   async function esportaExcel() {
@@ -162,21 +206,21 @@ export default function OreOperatoriExcelPage() {
     const nomeFile = `Ore_${nomePulito}_${meseNum}_${anno}.xlsx`
 
     const wb = new ExcelJS.Workbook()
-    const ws = wb.addWorksheet("Ore")
+    const ws = wb.addWorksheet("Ore lavorate")
 
     ws.pageSetup = {
       paperSize: 9,
-      orientation: "portrait",
+      orientation: "landscape",
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 0,
       horizontalCentered: true,
       verticalCentered: false,
       margins: {
-        left: 0.35,
-        right: 0.35,
-        top: 0.5,
-        bottom: 0.5,
+        left: 0.25,
+        right: 0.25,
+        top: 0.45,
+        bottom: 0.45,
         header: 0.2,
         footer: 0.2
       }
@@ -185,124 +229,128 @@ export default function OreOperatoriExcelPage() {
     ws.headerFooter.oddFooter = "Pagina &P di &N"
 
     ws.columns = [
-      { header: "Data", key: "data", width: 16 },
-      { header: "Ore", key: "ore", width: 10 },
-      { header: "Cliente", key: "cliente", width: 48 }
+      { key: "data", width: 14 },
+      { key: "descrizione", width: 70 },
+      { key: "operatore", width: 24 },
+      { key: "ore", width: 10 }
     ]
 
     ws.views = [
-      { state: "frozen", ySplit: 1 }
+      { state: "frozen", ySplit: 7 }
     ]
 
-    ws.getRow(1).values = ["Data", "Ore", "Cliente"]
-    ws.getRow(1).height = 22
+    ws.mergeCells("A1:D1")
+    ws.getCell("A1").value = "RIEPILOGO ORE LAVORATE"
+    ws.getCell("A1").font = {
+      bold: true,
+      size: 18,
+      color: { argb: "FF1F4E78" }
+    }
+    ws.getCell("A1").alignment = {
+      horizontal: "center",
+      vertical: "middle"
+    }
+    ws.getRow(1).height = 30
 
-    for (let c = 1; c <= 3; c++) {
-      const cell = ws.getRow(1).getCell(c)
-      cell.font = { bold: true }
-      cell.alignment = { horizontal: "center", vertical: "middle" }
-      applicaBordoCella(cell, "thin")
+    ws.getCell("A3").value = "Mese:"
+    ws.getCell("B3").value = `${meseNum}/${anno}`
+    ws.getCell("A4").value = "Operatore:"
+    ws.getCell("B4").value = nomeOperatore
+
+    ws.getCell("A3").font = { bold: true }
+    ws.getCell("A4").font = { bold: true }
+
+    ws.getCell("B3").font = { bold: true }
+    ws.getCell("B4").font = { bold: true }
+
+    ws.getRow(6).values = ["Data", "Descrizione", "Operatore", "Ore"]
+    ws.getRow(6).height = 24
+
+    for (let c = 1; c <= 4; c++) {
+      stileIntestazione(ws.getRow(6).getCell(c))
     }
 
     const gruppi = raggruppaPerData(righe)
 
-    let rigaExcel = 3
-    let righeUsatePagina = 2
-
-    const righePerPagina = 34
+    let rigaExcel = 7
 
     for (const gruppo of gruppi) {
-      const righeGruppo = gruppo.righe.length
-      const spazioGruppo = righeGruppo + 2
-
-      if (righeUsatePagina + spazioGruppo > righePerPagina) {
-        ws.addPageBreak(rigaExcel - 1)
-
-        while (righeUsatePagina < righePerPagina) {
-          ws.getRow(rigaExcel).height = 18
-          rigaExcel++
-          righeUsatePagina++
-        }
-
-        righeUsatePagina = 0
-      }
-
-      const primaRigaGruppo = rigaExcel
-
       for (const r of gruppo.righe) {
-        ws.getRow(rigaExcel).height = 20
+        const row = ws.getRow(rigaExcel)
 
-        ws.getCell(`A${rigaExcel}`).value = r.data_it
-        ws.getCell(`B${rigaExcel}`).value = r.ore
-        ws.getCell(`C${rigaExcel}`).value = r.cliente || "-"
+        row.height = 30
 
-        ws.getCell(`A${rigaExcel}`).alignment = {
-          horizontal: "center",
-          vertical: "middle"
-        }
+        row.getCell(1).value = r.data_it
+        row.getCell(2).value = r.descrizione || "-"
+        row.getCell(3).value = r.operatore || "-"
+        row.getCell(4).value = r.ore
 
-        ws.getCell(`B${rigaExcel}`).alignment = {
-          horizontal: "center",
-          vertical: "middle"
-        }
-
-        ws.getCell(`C${rigaExcel}`).alignment = {
-          horizontal: "center",
-          vertical: "middle"
-        }
-
-        applicaBordiRiga(ws, rigaExcel)
+        stileCellaNormale(row.getCell(1), "center")
+        stileCellaNormale(row.getCell(2), "left")
+        stileCellaNormale(row.getCell(3), "center")
+        stileCellaNormale(row.getCell(4), "center")
 
         rigaExcel++
-        righeUsatePagina++
       }
 
-      const ultimaRigaGruppo = rigaExcel - 1
-
-      for (let c = 1; c <= 3; c++) {
-        ws.getRow(primaRigaGruppo).getCell(c).border = {
-          ...ws.getRow(primaRigaGruppo).getCell(c).border,
-          top: { style: "medium" }
-        }
-
-        ws.getRow(ultimaRigaGruppo).getCell(c).border = {
-          ...ws.getRow(ultimaRigaGruppo).getCell(c).border,
-          bottom: { style: "medium" }
-        }
-      }
-
-      for (let r = primaRigaGruppo; r <= ultimaRigaGruppo; r++) {
-        ws.getRow(r).getCell(1).border = {
-          ...ws.getRow(r).getCell(1).border,
-          left: { style: "medium" }
-        }
-
-        ws.getRow(r).getCell(3).border = {
-          ...ws.getRow(r).getCell(3).border,
-          right: { style: "medium" }
-        }
-      }
-
-      ws.getRow(rigaExcel).height = 14
+      ws.getRow(rigaExcel).height = 12
       rigaExcel++
-      righeUsatePagina++
     }
 
     const totaleOre = righe.reduce((tot, r) => tot + Number(r.ore || 0), 0)
 
     rigaExcel++
 
-    ws.getCell(`A${rigaExcel}`).value = "Totale ore"
-    ws.getCell(`B${rigaExcel}`).value = totaleOre
-    ws.getCell(`A${rigaExcel}`).font = { bold: true }
-    ws.getCell(`B${rigaExcel}`).font = { bold: true }
-    ws.getCell(`A${rigaExcel}`).alignment = { horizontal: "right" }
-    ws.getCell(`B${rigaExcel}`).alignment = { horizontal: "center" }
+    ws.mergeCells(`A${rigaExcel}:C${rigaExcel}`)
+    ws.getCell(`A${rigaExcel}`).value = "TOTALE ORE"
+    ws.getCell(`D${rigaExcel}`).value = totaleOre
 
-    applicaBordoCella(ws.getCell(`A${rigaExcel}`), "medium")
-    applicaBordoCella(ws.getCell(`B${rigaExcel}`), "medium")
+    ws.getCell(`A${rigaExcel}`).font = {
+      bold: true,
+      size: 12,
+      color: { argb: "FFFFFFFF" }
+    }
 
-    ws.pageSetup.printArea = `A1:C${rigaExcel}`
+    ws.getCell(`D${rigaExcel}`).font = {
+      bold: true,
+      size: 12,
+      color: { argb: "FFFFFFFF" }
+    }
+
+    ws.getCell(`A${rigaExcel}`).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF198754" }
+    }
+
+    ws.getCell(`D${rigaExcel}`).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF198754" }
+    }
+
+    ws.getCell(`A${rigaExcel}`).alignment = {
+      horizontal: "right",
+      vertical: "middle"
+    }
+
+    ws.getCell(`D${rigaExcel}`).alignment = {
+      horizontal: "center",
+      vertical: "middle"
+    }
+
+    for (let c = 1; c <= 4; c++) {
+      applicaBordoCella(ws.getRow(rigaExcel).getCell(c), "medium", "FF198754")
+    }
+
+    ws.getRow(rigaExcel).height = 26
+
+    ws.autoFilter = {
+      from: "A6",
+      to: `D${rigaExcel - 2}`
+    }
+
+    ws.pageSetup.printArea = `A1:D${rigaExcel}`
 
     const buffer = await wb.xlsx.writeBuffer()
     const blob = new Blob([buffer], {
@@ -316,7 +364,7 @@ export default function OreOperatoriExcelPage() {
 
   const righeOrdinatePagina = [...righe].sort((a, b) => {
     if (a.data === b.data) {
-      return a.cliente.localeCompare(b.cliente)
+      return a.descrizione.localeCompare(b.descrizione)
     }
 
     return a.data.localeCompare(b.data)
@@ -334,7 +382,7 @@ export default function OreOperatoriExcelPage() {
         borderRadius: 6,
         marginBottom: 15
       }}>
-        Seleziona mese e operatore. L’Excel viene esportato con cornici per giorno, righe sottolineate, tabella centrata e numerazione pagine.
+        Excel ordinato per data, con spazio tra una data e l’altra, colonne larghe, descrizioni leggibili e stampa in larghezza.
       </div>
 
       <div style={{

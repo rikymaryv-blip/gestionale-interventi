@@ -28,6 +28,19 @@ export default function BolleUploadPage() {
     return d.toISOString().split("T")[0]
   }
 
+  function formattaDataIt(data) {
+    if (!data) return "-"
+
+    const soloData = String(data).split("T")[0]
+    const parti = soloData.split("-")
+
+    if (parti.length === 3) {
+      return `${parti[2]}/${parti[1]}/${parti[0]}`
+    }
+
+    return data
+  }
+
   const [dataDa, setDataDa] = useState(formatDate(dueGiorniFa))
   const [dataA, setDataA] = useState(formatDate(oggi))
 
@@ -79,6 +92,7 @@ export default function BolleUploadPage() {
     const { data, error } = await supabase
       .from("bolle_acquisto")
       .select("*")
+      .order("data", { ascending: false })
       .order("id", { ascending: false })
 
     if (error) {
@@ -87,7 +101,18 @@ export default function BolleUploadPage() {
       return
     }
 
-    setBolle(data || [])
+    const ordinate = (data || []).sort((a, b) => {
+      const dataA = a.data || ""
+      const dataB = b.data || ""
+
+      if (dataA !== dataB) {
+        return dataB.localeCompare(dataA)
+      }
+
+      return Number(b.id || 0) - Number(a.id || 0)
+    })
+
+    setBolle(ordinate)
   }
 
   async function apriBolla(b) {
@@ -440,7 +465,7 @@ export default function BolleUploadPage() {
 
       if (materialiDaInserire.length === 0) {
         alert("Tutti i materiali di questa bolla risultano già presenti nell’intervento")
-        re
+        return
       }
 
       const { error: insertError } = await supabase
@@ -452,7 +477,6 @@ export default function BolleUploadPage() {
         alert("Errore inserimento materiali intervento: " + insertError.message)
         return
       }
-
 
       const { error: updateError } = await supabase
         .from("bolle_acquisto")
@@ -501,13 +525,24 @@ export default function BolleUploadPage() {
   const operatori = [...new Set(bolle.map(b => b.creatore_carrello).filter(Boolean))]
   const carrelli = [...new Set(bolle.map(b => b.nome_carrello).filter(Boolean))]
 
-  const bolleFiltrate = bolle.filter(b => {
-    const m1 = !filtroOperatore || b.creatore_carrello === filtroOperatore
-    const m2 = (!dataDa || b.data >= dataDa) && (!dataA || b.data <= dataA)
-    const m3 = !ricercaCarrello || (b.nome_carrello || "").toLowerCase().includes(ricercaCarrello.toLowerCase())
+  const bolleFiltrate = bolle
+    .filter(b => {
+      const m1 = !filtroOperatore || b.creatore_carrello === filtroOperatore
+      const m2 = (!dataDa || b.data >= dataDa) && (!dataA || b.data <= dataA)
+      const m3 = !ricercaCarrello || (b.nome_carrello || "").toLowerCase().includes(ricercaCarrello.toLowerCase())
 
-    return m1 && m2 && m3
-  })
+      return m1 && m2 && m3
+    })
+    .sort((a, b) => {
+      const dataAOrd = a.data || ""
+      const dataBOrd = b.data || ""
+
+      if (dataAOrd !== dataBOrd) {
+        return dataBOrd.localeCompare(dataAOrd)
+      }
+
+      return Number(b.id || 0) - Number(a.id || 0)
+    })
 
   function renderDettaglioBolla() {
     return (
@@ -572,7 +607,7 @@ export default function BolleUploadPage() {
             <option value="">Seleziona intervento</option>
             {interventi.map(i => (
               <option key={i.id} value={i.id}>
-                {i.data} - {i.clienti?.nome} - {i.descrizione}
+                {formattaDataIt(i.data)} - {i.clienti?.nome} - {i.descrizione}
               </option>
             ))}
           </select>
@@ -673,7 +708,7 @@ export default function BolleUploadPage() {
             {" "}
             <b>
               #{interventoIdDaUrl}
-              {interventoCorrente?.data ? ` - ${interventoCorrente.data}` : ""}
+              {interventoCorrente?.data ? ` - ${formattaDataIt(interventoCorrente.data)}` : ""}
               {interventoCorrente?.clienti?.nome ? ` - ${interventoCorrente.clienti.nome}` : ""}
             </b>
           </div>
@@ -815,7 +850,7 @@ export default function BolleUploadPage() {
             }}
           >
             <b>{b.numero_ordine}</b> | DDT: {b.numero_ddt}
-            <div>📅 {b.data || "-"}</div>
+            <div>📅 {formattaDataIt(b.data)}</div>
             <div>👤 {b.creatore_carrello || "-"}</div>
             <div>📦 {b.nome_carrello || "-"}</div>
             {b.usata && <span>✅ USATA</span>}

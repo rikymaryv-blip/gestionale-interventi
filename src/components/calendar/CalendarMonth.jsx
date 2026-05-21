@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useEffect, useMemo, useRef, useState } from "react"
 import dayjs from "dayjs"
 import "dayjs/locale/it"
 import { supabase } from "../../supabaseClient"
@@ -7,272 +6,391 @@ import { supabase } from "../../supabaseClient"
 dayjs.locale("it")
 
 export default function CalendarMonth() {
-  const navigate = useNavigate()
-
+  const [mese, setMese] = useState(dayjs())
+  const [interventi, setInterventi] = useState([])
   const [operatori, setOperatori] = useState([])
-  const [selectedOperator, setSelectedOperator] = useState("")
-  const [giorni, setGiorni] = useState([])
-
+  const [operatoreFiltro, setOperatoreFiltro] = useState("")
   const [giornoSelezionato, setGiornoSelezionato] = useState(null)
-  const [interventiGiorno, setInterventiGiorno] = useState([])
 
-  const [meseCorrente, setMeseCorrente] = useState(dayjs())
-
-  const giorniNelMese = meseCorrente.daysInMonth()
-  const primoGiorno = (meseCorrente.startOf("month").day() + 6) % 7
-  const annoMese = meseCorrente.format("YYYY-MM")
+  const paginaRef = useRef(null)
+  const interventiRef = useRef(null)
 
   useEffect(() => {
-    loadOperatori()
+    caricaOperatori()
   }, [])
 
   useEffect(() => {
-    caricaOre()
-  }, [selectedOperator, meseCorrente])
+    caricaInterventi()
+  }, [mese])
 
-  async function loadOperatori() {
-    const { data } = await supabase
+  async function caricaOperatori() {
+    const { data, error } = await supabase
       .from("operatori")
       .select("*")
-      .order("nome")
+      .order("nome", { ascending: true })
+
+    if (error) {
+      console.error("Errore operatori:", error)
+      return
+    }
 
     setOperatori(data || [])
   }
 
-  async function caricaOre() {
-    const { data } = await supabase
-      .from("interventi")
-      .select(`
-        data,
-        ore_operatori(ore, operatore_id)
-      `)
-      .gte("data", `${annoMese}-01`)
-      .lte("data", `${annoMese}-${giorniNelMese}`)
+  async function caricaInterventi() {
+    const inizio = mese.startOf("month").format("YYYY-MM-DD")
+    const fine = mese.endOf("month").format("YYYY-MM-DD")
 
-    let mappa = {}
-    let count = {}
-
-    data?.forEach(i => {
-      const giorno = dayjs(i.data).date()
-
-      let totale = 0
-
-      i.ore_operatori?.forEach(op => {
-        if (!selectedOperator || op.operatore_id == selectedOperator) {
-          totale += Number(op.ore || 0)
-        }
-      })
-
-      if (!mappa[giorno]) mappa[giorno] = 0
-      if (!count[giorno]) count[giorno] = 0
-
-      mappa[giorno] += totale
-      count[giorno] += 1
-    })
-
-    let lista = []
-
-    for (let i = 0; i < primoGiorno; i++) {
-      lista.push(null)
-    }
-
-    for (let g = 1; g <= giorniNelMese; g++) {
-      lista.push({
-        giorno: g,
-        ore: mappa[g] || 0,
-        count: count[g] || 0,
-        data: dayjs(`${annoMese}-${String(g).padStart(2, "0")}`)
-      })
-    }
-
-    setGiorni(lista)
-  }
-
-  function getColore(g) {
-    if (!g) return "transparent"
-
-    const giorno = g.data
-    const oggi = dayjs()
-    const giornoSettimana = giorno.day()
-    const isWeekend = giornoSettimana === 0 || giornoSettimana === 6
-
-    if (giorno.isAfter(oggi, "day")) return "#fff"
-    if (isWeekend && g.ore === 0) return "#fff"
-    if (g.ore === 0) return "#ff4d4d"
-    if (g.ore > 0 && g.ore < 8) return "#ffd54f"
-    if (g.ore >= 8) return "#4caf50"
-
-    return "#fff"
-  }
-
-  async function apriGiorno(g) {
-    if (!g) return
-
-    setGiornoSelezionato(g)
-
-    const dataStr = g.data.format("YYYY-MM-DD")
-
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("interventi")
       .select(`
         id,
+        data,
         descrizione,
+        archiviato,
         clienti(nome),
-        ore_operatori(ore, operatori(nome))
+        cantieri(nome),
+        ore_operatori(
+          ore,
+          operatori(id, nome)
+        )
       `)
-      .eq("data", dataStr)
+      .gte("data", inizio)
+      .lte("data", fine)
+      .or("archiviato.is.null,archiviato.eq.false")
+      .order("data", { ascending: true })
 
-    setInterventiGiorno(data || [])
+    if (error) {
+      console.error("Errore interventi:", error)
+      return
+    }
+
+    setInterventi(data || [])
   }
 
+  const giorniCalendario = useMemo(() => {
+    const start = mese.startOf("month")
+    const giorniNelMese = mese.daysInMonth()
+    const offset = (start.day() + 6) % 7
+    const giorni = []
+
+    for (let i = 0; i < offset; i++) giorni.push(null)
+    for (let g = 1; g <= giorniNelMese; g++) giorni.push(mese.date(g))
+
+    return giorni
+  }, [mese])
+
+  function interventiDelGiorno(giorno) {
+    if (!giorno) return []
+
+    return interventi.filter((intervento) => {
+      if (intervento.data !== giorno.format("YYYY-MM-DD")) return false
+      if (!operatoreFiltro) return true
+
+      return intervento.ore_operatori?.some(
+        (riga) => String(riga.operatori?.id) === String(operatoreFiltro)
+      )
+    })
+  }
+
+  function oreDelGiorno(giorno) {
+    return interventiDelGiorno(giorno).reduce((totale, intervento) => {
+      const ore = intervento.ore_operatori || []
+
+      const oreFiltrate = operatoreFiltro
+        ? ore.filter(
+            (riga) => String(riga.operatori?.id) === String(operatoreFiltro)
+          )
+        : ore
+
+      return (
+        totale +
+        oreFiltrate.reduce(
+          (somma, riga) => somma + Number(riga.ore || 0),
+          0
+        )
+      )
+    }, 0)
+  }
+
+  function coloreGiorno(giorno) {
+    if (!giorno) return "white"
+
+    const oggi = dayjs().startOf("day")
+    const dataGiorno = giorno.startOf("day")
+    const ore = oreDelGiorno(giorno)
+    const weekend = giorno.day() === 0 || giorno.day() === 6
+
+    if (dataGiorno.isAfter(oggi)) return "white"
+    if (weekend && ore === 0) return "white"
+    if (ore >= 8) return "#d8f5d0"
+    if (ore > 0) return "#fff3bf"
+    return "#ffc9c9"
+  }
+
+  function vaiAgliInterventi() {
+    setTimeout(() => {
+      if (!paginaRef.current || !interventiRef.current) return
+
+      paginaRef.current.scrollTo({
+        top: interventiRef.current.offsetTop - 10,
+        behavior: "smooth",
+      })
+    }, 300)
+  }
+
+  function selezionaGiorno(giorno) {
+    if (!giorno) return
+
+    setGiornoSelezionato(giorno.format("YYYY-MM-DD"))
+    vaiAgliInterventi()
+  }
+
+  const interventiSelezionati = giornoSelezionato
+    ? interventiDelGiorno(dayjs(giornoSelezionato))
+    : []
+
+  const clientiGiornata = [
+    ...new Set(
+      interventiSelezionati.map(
+        (intervento) => intervento.clienti?.nome || "Cliente non indicato"
+      )
+    ),
+  ]
+
   return (
-    <div style={{ padding: 20 }}>
-      {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button onClick={() => setMeseCorrente(meseCorrente.subtract(1, "month"))}>⬅️</button>
-        <h2>{meseCorrente.format("MMMM YYYY")}</h2>
-        <button onClick={() => setMeseCorrente(meseCorrente.add(1, "month"))}>➡️</button>
+    <div ref={paginaRef} style={page}>
+      <h1>📅 Calendario interventi</h1>
+
+      <div style={topBar}>
+        <button
+          style={button}
+          onClick={() => setMese(mese.subtract(1, "month"))}
+        >
+          ◀
+        </button>
+
+        <h2 style={monthTitle}>{mese.format("MMMM YYYY")}</h2>
+
+        <button
+          style={button}
+          onClick={() => setMese(mese.add(1, "month"))}
+        >
+          ▶
+        </button>
       </div>
 
       <select
-        value={selectedOperator}
-        onChange={e => setSelectedOperator(e.target.value)}
-        style={{ marginBottom: 10 }}
+        style={select}
+        value={operatoreFiltro}
+        onChange={(e) => setOperatoreFiltro(e.target.value)}
       >
         <option value="">Tutti operatori</option>
-        {operatori.map(op => (
+
+        {operatori.map((op) => (
           <option key={op.id} value={op.id}>
             {op.nome}
           </option>
         ))}
       </select>
 
-      <div style={headerGrid}>
-        {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map(g => (
-          <div key={g} style={headerCell}>{g}</div>
-        ))}
-      </div>
-
-      <div style={grid}>
-        {giorni.map((g, i) => (
-          <div key={i} style={cella}>
-            {g && (
-              <div
-                onClick={() => apriGiorno(g)}
-                style={{
-                  ...boxGiorno,
-                  background: getColore(g),
-                  cursor: "pointer",
-                  border: giornoSelezionato?.giorno === g.giorno ? "2px solid #000" : "1px solid #ccc"
-                }}
-              >
-                <div style={{ fontWeight: "bold" }}>{g.giorno}</div>
-                <div style={{ fontSize: 12 }}>
-                  {g.ore > 0 ? `${g.ore}h` : "-"}
-                </div>
-                {g.count > 0 && (
-                  <div style={{ fontSize: 10 }}>{g.count} int.</div>
-                )}
-              </div>
-            )}
+      <div style={weekGrid}>
+        {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((g) => (
+          <div key={g} style={weekDay}>
+            {g}
           </div>
         ))}
       </div>
 
-      {/* POPUP */}
-      {giornoSelezionato && (
-        <div style={{
-          marginTop: 20,
-          border: "1px solid #ccc",
-          padding: 10,
-          borderRadius: 8,
-          background: "#fff"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <h3>{giornoSelezionato.data.format("DD/MM/YYYY")}</h3>
-            <button onClick={() => setGiornoSelezionato(null)}>❌</button>
-          </div>
+      <div style={calendarGrid}>
+        {giorniCalendario.map((giorno, index) => {
+          const ore = giorno ? oreDelGiorno(giorno) : 0
+          const lista = giorno ? interventiDelGiorno(giorno) : []
+          const selezionato =
+            giornoSelezionato === giorno?.format("YYYY-MM-DD")
 
-          <button
-            style={{ marginBottom: 10 }}
-            onClick={() =>
-              navigate("/interventi?data=" + giornoSelezionato.data.format("YYYY-MM-DD"))
-            }
-          >
-            ➕ Nuovo intervento
-          </button>
-
-          {interventiGiorno.length === 0 && <p>Nessun intervento</p>}
-
-          {interventiGiorno.map(i => (
+          return (
             <div
-              key={i.id}
+              key={index}
+              onClick={() => selezionaGiorno(giorno)}
               style={{
-                border: "1px solid #ddd",
-                borderRadius: 8,
-                padding: 10,
-                marginBottom: 10,
-                background: "#fafafa"
+                ...dayCell,
+                background: coloreGiorno(giorno),
+                cursor: giorno ? "pointer" : "default",
+                border: selezionato
+                  ? "3px solid #1976d2"
+                  : "1px solid #ccc",
               }}
             >
-              <div style={{ fontWeight: "bold" }}>{i.clienti?.nome}</div>
-              <div>{i.descrizione}</div>
-
-              <div style={{ marginTop: 6 }}>
-                {i.ore_operatori?.map((o, idx) => (
-                  <div key={idx} style={{ fontSize: 12 }}>
-                    {o.operatori?.nome} • {o.ore}h
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ marginTop: 8 }}>
-                <button
-                  onClick={() => navigate("/interventi?edit=" + i.id)}
-                  style={{
-                    fontSize: 12,
-                    padding: "4px 8px",
-                    borderRadius: 5,
-                    border: "1px solid #ccc",
-                    cursor: "pointer"
-                  }}
-                >
-                  ✏️ Modifica
-                </button>
-              </div>
+              {giorno && (
+                <>
+                  <div style={dayNumber}>{giorno.date()}</div>
+                  <div>{ore > 0 ? `${ore}h` : "-"}</div>
+                  {lista.length > 0 && <div>{lista.length} int.</div>}
+                </>
+              )}
             </div>
-          ))}
+          )
+        })}
+      </div>
+
+      {giornoSelezionato && (
+        <div ref={interventiRef} style={detailsBox}>
+          <h2>
+            Interventi del {dayjs(giornoSelezionato).format("DD/MM/YYYY")}
+          </h2>
+
+          {operatoreFiltro && clientiGiornata.length > 0 && (
+            <div style={clientiGiornoBox}>
+              <strong>Clienti della giornata:</strong>
+              <ul>
+                {clientiGiornata.map((cliente, index) => (
+                  <li key={index}>{cliente}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {interventiSelezionati.length === 0 ? (
+            <p>Nessun intervento in questo giorno.</p>
+          ) : (
+            interventiSelezionati.map((intervento) => (
+              <div key={intervento.id} style={card}>
+                <h3>{intervento.clienti?.nome || "Cliente non indicato"}</h3>
+
+                <p>
+                  <strong>Cantiere:</strong>{" "}
+                  {intervento.cantieri?.nome || "Non indicato"}
+                </p>
+
+                <p>
+                  <strong>Descrizione:</strong>{" "}
+                  {intervento.descrizione || "Nessuna descrizione"}
+                </p>
+
+                <strong>Operatori:</strong>
+
+                {intervento.ore_operatori?.length > 0 ? (
+                  <ul>
+                    {intervento.ore_operatori
+                      .filter((riga) =>
+                        operatoreFiltro
+                          ? String(riga.operatori?.id) ===
+                            String(operatoreFiltro)
+                          : true
+                      )
+                      .map((riga, i) => (
+                        <li key={i}>
+                          {riga.operatori?.nome || "Operatore"} - {riga.ore} ore
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <p>Nessun operatore inserito.</p>
+                )}
+              </div>
+            ))
+          )}
+
+          <div style={{ height: "350px" }}></div>
         </div>
       )}
     </div>
   )
 }
 
-const headerGrid = {
+const page = {
+  height: "calc(100vh - 90px)",
+  overflowY: "auto",
+  padding: "20px",
+  maxWidth: "1200px",
+  margin: "0 auto",
+  boxSizing: "border-box",
+}
+
+const topBar = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: "15px",
+}
+
+const monthTitle = {
+  textTransform: "capitalize",
+  margin: 0,
+}
+
+const button = {
+  padding: "10px 14px",
+  borderRadius: "8px",
+  border: "1px solid #ccc",
+  background: "#f5f5f5",
+  cursor: "pointer",
+  fontWeight: "bold",
+}
+
+const select = {
+  width: "100%",
+  padding: "12px",
+  borderRadius: "0",
+  border: "1px solid #ccc",
+  marginBottom: "25px",
+  fontSize: "16px",
+}
+
+const weekGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(7, 1fr)",
-  marginTop: 10
+  gap: "6px",
+  marginBottom: "6px",
 }
 
-const headerCell = {
+const weekDay = {
   textAlign: "center",
-  fontWeight: "bold"
+  fontWeight: "bold",
+  padding: "8px",
 }
 
-const grid = {
+const calendarGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(7, 1fr)",
-  gap: 5,
-  marginTop: 5
+  gap: "6px",
 }
 
-const cella = {
-  height: 80
-}
-
-const boxGiorno = {
-  height: "100%",
-  padding: 5,
+const dayCell = {
+  minHeight: "100px",
+  borderRadius: "6px",
+  padding: "8px",
+  boxSizing: "border-box",
   textAlign: "center",
-  borderRadius: 4
+  fontWeight: "bold",
+}
+
+const dayNumber = {
+  fontSize: "18px",
+  marginBottom: "8px",
+}
+
+const detailsBox = {
+  marginTop: "35px",
+  padding: "20px",
+  borderRadius: "12px",
+  border: "3px solid #1976d2",
+  background: "#fafafa",
+}
+
+const clientiGiornoBox = {
+  background: "#e3f2fd",
+  border: "1px solid #1976d2",
+  borderRadius: "8px",
+  padding: "12px",
+  marginBottom: "15px",
+}
+
+const card = {
+  background: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: "10px",
+  padding: "15px",
+  marginBottom: "12px",
 }

@@ -1,20 +1,28 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { supabase } from "../supabaseClient"
 
 export default function PreferitiPage() {
-
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-
   const interventoId = searchParams.get("intervento_id")
 
   const [preferiti, setPreferiti] = useState([])
-  const [ricerca, setRicerca] = useState("")
-  const [produttore, setProduttore] = useState("")
+  const [filtro1, setFiltro1] = useState("")
+  const [filtro2, setFiltro2] = useState("")
+  const [filtro3, setFiltro3] = useState("")
+  const [filtro4, setFiltro4] = useState("")
+
+  const ref1 = useRef(null)
+  const ref2 = useRef(null)
+  const ref3 = useRef(null)
+  const ref4 = useRef(null)
+  const risultatiRef = useRef(null)
+
   const [quantita, setQuantita] = useState({})
   const [soloConPrezzo, setSoloConPrezzo] = useState(false)
   const [importandoId, setImportandoId] = useState(null)
+  const [rigenerando, setRigenerando] = useState(false)
 
   useEffect(() => {
     caricaPreferiti()
@@ -45,6 +53,104 @@ export default function PreferitiPage() {
     setPreferiti(data || [])
   }
 
+  async function rigeneraPreferiti() {
+    if (rigenerando) return
+
+    const conferma = window.confirm(
+      "Vuoi rigenerare completamente i preferiti da bolle e carrelli?\n\nI preferiti attuali verranno cancellati e ricreati."
+    )
+
+    if (!conferma) return
+
+    setRigenerando(true)
+
+    try {
+      const { data: righe, error: righeError } = await supabase
+        .from("bolle_righe")
+        .select("*")
+
+      if (righeError) {
+        console.error(righeError)
+        alert("Errore lettura righe: " + righeError.message)
+        return
+      }
+
+      const raggruppati = {}
+
+      for (const r of (righe || [])) {
+        const codice = String(r.codice || "").trim()
+        const descrizione = String(r.descrizione || "").trim()
+
+        if (!codice && !descrizione) continue
+
+        const key = codice || descrizione
+
+        if (!raggruppati[key]) {
+          raggruppati[key] = {
+            codice,
+            descrizione,
+            prezzo: 0,
+            quantita_totale: 0,
+            volte_usato: 0,
+            ultimo_utilizzo: new Date().toISOString()
+          }
+        }
+
+        raggruppati[key].quantita_totale += Number(r.quantita || 0)
+        raggruppati[key].volte_usato += 1
+
+        const prezzo = Number(r.prezzo || 0)
+
+        if (prezzo > Number(raggruppati[key].prezzo || 0)) {
+          raggruppati[key].prezzo = prezzo
+        }
+      }
+
+      const nuoviPreferiti = Object.values(raggruppati)
+
+      const { data: vecchiPreferiti, error: selectVecchiError } = await supabase
+        .from("articoli_preferiti")
+        .select("id")
+
+      if (selectVecchiError) {
+        console.error(selectVecchiError)
+        alert("Errore lettura preferiti da eliminare: " + selectVecchiError.message)
+        return
+      }
+
+      if ((vecchiPreferiti || []).length > 0) {
+        const { error: deleteError } = await supabase
+          .from("articoli_preferiti")
+          .delete()
+          .in("id", vecchiPreferiti.map(p => p.id))
+
+        if (deleteError) {
+          console.error(deleteError)
+          alert("Errore pulizia preferiti: " + deleteError.message)
+          return
+        }
+      }
+
+      if (nuoviPreferiti.length > 0) {
+        const { error: insertError } = await supabase
+          .from("articoli_preferiti")
+          .insert(nuoviPreferiti)
+
+        if (insertError) {
+          console.error(insertError)
+          alert("Errore ricreazione preferiti: " + insertError.message)
+          return
+        }
+      }
+
+      alert(`✅ Preferiti rigenerati\n\nTotale articoli: ${nuoviPreferiti.length}`)
+      caricaPreferiti()
+
+    } finally {
+      setRigenerando(false)
+    }
+  }
+
   function formatPrezzo(v) {
     const n = Number(v || 0)
 
@@ -57,6 +163,18 @@ export default function PreferitiPage() {
   function formatData(v) {
     if (!v) return "-"
     return new Date(v).toLocaleDateString("it-IT")
+  }
+
+  function normalizzaTesto(testo) {
+    return String(testo || "")
+      .toLowerCase()
+      .replaceAll(",", " ")
+      .replaceAll(".", " ")
+      .replaceAll("-", " ")
+      .replaceAll("_", " ")
+      .replaceAll("/", " ")
+      .replace(/\s+/g, " ")
+      .trim()
   }
 
   async function aggiornaStatistichePreferito(item, qta) {
@@ -72,7 +190,6 @@ export default function PreferitiPage() {
     if (error) {
       console.error(error)
       alert("Materiale importato, ma errore aggiornamento statistiche preferito: " + error.message)
-      return
     }
   }
 
@@ -158,31 +275,30 @@ export default function PreferitiPage() {
   }
 
   const preferitiFiltrati = preferiti.filter(p => {
-    const testo = ricerca.toLowerCase().trim()
-    const testoProduttore = produttore.toLowerCase().trim()
+    const testoCompleto = normalizzaTesto(`
+      ${p.codice || ""}
+      ${p.descrizione || ""}
+      ${p.produttore || ""}
+      ${p.marca || ""}
+      ${p.ean || ""}
+    `)
 
-    const codice = p.codice?.toLowerCase() || ""
-    const descrizione = p.descrizione?.toLowerCase() || ""
+    const filtri = [filtro1, filtro2, filtro3, filtro4]
+      .map(normalizzaTesto)
+      .filter(Boolean)
 
-    const matchTesto =
-      !testo ||
-      codice.includes(testo) ||
-      descrizione.includes(testo)
-
-    const matchProduttore =
-      !testoProduttore ||
-      codice.includes(testoProduttore) ||
-      descrizione.includes(testoProduttore)
+    const matchFiltri = filtri.every(filtro =>
+      testoCompleto.includes(filtro)
+    )
 
     const matchPrezzo =
       !soloConPrezzo || Number(p.prezzo || 0) > 0
 
-    return matchTesto && matchProduttore && matchPrezzo
+    return matchFiltri && matchPrezzo
   })
 
   return (
     <div style={{ padding: 20 }}>
-
       <h2>⭐ Materiali Preferiti</h2>
 
       {interventoId ? (
@@ -238,35 +354,55 @@ export default function PreferitiPage() {
         alignItems: "center"
       }}>
         <input
-          placeholder="Cerca per codice o descrizione..."
-          value={ricerca}
-          onChange={(e) => setRicerca(e.target.value)}
-          style={{
-            flex: 1,
-            minWidth: 260,
-            padding: 8,
-            border: "1px solid #ccc",
-            borderRadius: 5
+          ref={ref1}
+          placeholder="Filtro 1 es. PHL..."
+          value={filtro1}
+          onChange={(e) => setFiltro1(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") ref2.current?.focus()
           }}
+          style={{ minWidth: 190, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
         />
 
         <input
-          placeholder="Produttore..."
-          value={produttore}
-          onChange={(e) => setProduttore(e.target.value)}
-          style={{
-            minWidth: 190,
-            padding: 8,
-            border: "1px solid #ccc",
-            borderRadius: 5
+          ref={ref2}
+          placeholder="Filtro 2 es. GU..."
+          value={filtro2}
+          onChange={(e) => setFiltro2(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") ref3.current?.focus()
           }}
+          style={{ minWidth: 190, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
         />
 
-        <label style={{
-          display: "flex",
-          gap: 6,
-          alignItems: "center"
-        }}>
+        <input
+          ref={ref3}
+          placeholder="Filtro 3 es. 3000..."
+          value={filtro3}
+          onChange={(e) => setFiltro3(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") ref4.current?.focus()
+          }}
+          style={{ minWidth: 190, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+        />
+
+        <input
+          ref={ref4}
+          placeholder="Filtro 4 es. 15000..."
+          value={filtro4}
+          onChange={(e) => setFiltro4(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              risultatiRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+              })
+            }
+          }}
+          style={{ minWidth: 190, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+        />
+
+        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <input
             type="checkbox"
             checked={soloConPrezzo}
@@ -277,9 +413,12 @@ export default function PreferitiPage() {
 
         <button
           onClick={() => {
-            setRicerca("")
-            setProduttore("")
+            setFiltro1("")
+            setFiltro2("")
+            setFiltro3("")
+            setFiltro4("")
             setSoloConPrezzo(false)
+            ref1.current?.focus()
           }}
         >
           Reset
@@ -288,9 +427,24 @@ export default function PreferitiPage() {
         <button onClick={caricaPreferiti}>
           🔄 Aggiorna
         </button>
+
+        <button
+          onClick={rigeneraPreferiti}
+          disabled={rigenerando}
+          style={{
+            background: "#198754",
+            color: "white",
+            border: "none",
+            padding: "8px 12px",
+            borderRadius: 5,
+            cursor: rigenerando ? "not-allowed" : "pointer"
+          }}
+        >
+          {rigenerando ? "Rigenerazione..." : "♻️ Rigenera preferiti"}
+        </button>
       </div>
 
-      <div style={{ marginTop: 10 }}>
+      <div ref={risultatiRef} style={{ marginTop: 10 }}>
         Risultati: <b>{preferitiFiltrati.length}</b>
       </div>
 
@@ -338,21 +492,10 @@ export default function PreferitiPage() {
               gap: 12,
               flexWrap: "wrap"
             }}>
-              <span>
-                Prezzo: <b>{formatPrezzo(item.prezzo)}</b>
-              </span>
-
-              <span>
-                Usato: <b>{item.volte_usato || 0}</b> volte
-              </span>
-
-              <span>
-                Qta totale: <b>{item.quantita_totale || 0}</b>
-              </span>
-
-              <span>
-                Ultimo utilizzo: <b>{formatData(item.ultimo_utilizzo)}</b>
-              </span>
+              <span>Prezzo: <b>{formatPrezzo(item.prezzo)}</b></span>
+              <span>Usato: <b>{item.volte_usato || 0}</b> volte</span>
+              <span>Qta totale: <b>{item.quantita_totale || 0}</b></span>
+              <span>Ultimo utilizzo: <b>{formatData(item.ultimo_utilizzo)}</b></span>
             </div>
           </div>
 
@@ -379,7 +522,6 @@ export default function PreferitiPage() {
           )}
         </div>
       ))}
-
     </div>
   )
 }

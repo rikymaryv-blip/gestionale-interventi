@@ -212,6 +212,41 @@ export default function InterventiPage() {
     }))
   }
 
+  async function ripristinaBolla(mat) {
+    const conferma = confirm(
+      "Vuoi ripristinare questa bolla?\n\nLa bolla tornerà disponibile nell’archivio bolle."
+    )
+
+    if (!conferma) return
+
+    const descrizione = mat.descrizione || ""
+
+    const ordineMatch = descrizione.match(/ORDINE\s+(.+?)\s+\|/)
+    const ddtMatch = descrizione.match(/DDT\s+(.+?)\s+\|/)
+
+    const numeroOrdine = ordineMatch?.[1]?.trim()
+    const numeroDdt = ddtMatch?.[1]?.trim()
+
+    if (!numeroOrdine || !numeroDdt) {
+      alert("Non riesco a riconoscere ordine e DDT dalla riga bolla.")
+      return
+    }
+
+    const { error } = await supabase
+      .from("bolle_acquisto")
+      .update({ usata: false })
+      .eq("numero_ordine", numeroOrdine)
+      .eq("numero_ddt", numeroDdt)
+
+    if (error) {
+      console.error(error)
+      alert("Errore ripristino bolla: " + error.message)
+      return
+    }
+
+    alert("✅ Bolla ripristinata")
+  }
+
   function aggiungiMaterialeManuale() {
     const codice = altroMat.codice.trim()
     const descrizione = altroMat.descrizione.trim()
@@ -325,6 +360,7 @@ export default function InterventiPage() {
       .from("materiali_bollettino")
       .select("*")
       .eq("intervento_id", i.id)
+      .order("id", { ascending: true })
 
     if (matsError) {
       console.error(matsError)
@@ -343,9 +379,10 @@ export default function InterventiPage() {
         ore: o.ore
       })),
       materiali: (mats || []).map(m => ({
+        id: m.id,
         codice: m.codice || "",
         descrizione: m.descrizione || "",
-        quantita: m.quantita || 1
+        quantita: m.codice === "BOLLA" ? 0 : (m.quantita || 1)
       }))
     })
 
@@ -603,7 +640,12 @@ export default function InterventiPage() {
           intervento_id: int.id,
           codice: m.codice || "",
           descrizione: m.descrizione || "",
-          quantita: Number(m.quantita || 1) > 0 ? Number(m.quantita || 1) : 1
+          quantita:
+            m.codice === "BOLLA"
+              ? 0
+              : Number(m.quantita || 1) > 0
+                ? Number(m.quantita || 1)
+                : 1
         }))
 
       if (mats.length) {
@@ -905,32 +947,72 @@ export default function InterventiPage() {
         </div>
       )}
 
-      {form.materiali.map((m, i) => (
-        <div
-          key={i}
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            borderBottom: "1px solid #eee",
-            padding: "6px 0"
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            {m.codice || "-"} — {m.descrizione || "-"}
+      {form.materiali.map((m, i) => {
+        if (m.codice === "BOLLA") {
+          return (
+            <div
+              key={i}
+              style={{
+                marginTop: 14,
+                padding: 12,
+                background: "#eef4ff",
+                border: "2px solid #0d6efd",
+                borderRadius: 8,
+                fontWeight: "bold",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap"
+              }}
+            >
+              <div>{m.descrizione}</div>
+
+              <button
+                type="button"
+                onClick={() => ripristinaBolla(m)}
+                style={{
+                  background: "#ffc107",
+                  border: "none",
+                  padding: "7px 12px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontWeight: "bold"
+                }}
+              >
+                ↩ Ripristina bolla
+              </button>
+            </div>
+          )
+        }
+
+        return (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              borderBottom: "1px solid #eee",
+              padding: "6px 0"
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              {m.codice || "-"} — {m.descrizione || "-"}
+            </div>
+
+            <input
+              type="number"
+              min="1"
+              value={m.quantita}
+              onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
+              style={{ width: 70 }}
+            />
+
+            <button onClick={() => eliminaMateriale(i)}>❌</button>
           </div>
-
-          <input
-            type="number"
-            min="1"
-            value={m.quantita}
-            onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
-            style={{ width: 70 }}
-          />
-
-          <button onClick={() => eliminaMateriale(i)}>❌</button>
-        </div>
-      ))}
+        )
+      })}
 
       <br /><br />
 

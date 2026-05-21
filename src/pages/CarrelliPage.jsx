@@ -114,14 +114,95 @@ export default function CarrelliPage() {
   function leggiNumero(valore) {
     if (valore === null || valore === undefined) return 0
 
-    const pulito = String(valore)
+    let pulito = String(valore)
       .replace("€", "")
-      .replace(/\./g, "")
-      .replace(",", ".")
+      .replace(/\s/g, "")
       .trim()
+
+    if (!pulito) return 0
+
+    if (pulito.includes(",") && pulito.includes(".")) {
+      pulito = pulito.replace(/\./g, "").replace(",", ".")
+    } else if (pulito.includes(",")) {
+      pulito = pulito.replace(",", ".")
+    }
 
     const numero = Number(pulito)
     return isNaN(numero) ? 0 : numero
+  }
+
+  function formatPrezzo(valore) {
+    const n = Number(valore || 0)
+    return n.toLocaleString("it-IT", {
+      style: "currency",
+      currency: "EUR"
+    })
+  }
+
+  function trovaPrezzoDaColonne(colonne) {
+    const indiciPossibili = [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      18,
+      19,
+      20,
+      21,
+      22
+    ]
+
+    for (const indice of indiciPossibili) {
+      const valore = leggiNumero(colonne[indice])
+      if (valore > 0) return valore
+    }
+
+    return 0
+  }
+
+  async function eliminaCarrello(c) {
+    if (!c?.id) return
+
+    const nomeCarrello = c.nome || c.nome_carrello || "Carrello"
+
+    const conferma = window.confirm(
+      `Vuoi eliminare il carrello "${nomeCarrello}" e tutte le sue righe?`
+    )
+
+    if (!conferma) return
+
+    const { error: righeError } = await supabase
+      .from("bolle_righe")
+      .delete()
+      .eq("bolla_id", c.id)
+
+    if (righeError) {
+      console.error(righeError)
+      alert("Errore eliminazione righe: " + righeError.message)
+      return
+    }
+
+    const { error: carrelloError } = await supabase
+      .from("bolle_acquisto")
+      .delete()
+      .eq("id", c.id)
+
+    if (carrelloError) {
+      console.error(carrelloError)
+      alert("Errore eliminazione carrello: " + carrelloError.message)
+      return
+    }
+
+    alert("✅ Carrello eliminato")
+
+    if (selected?.id === c.id) {
+      setSelected(null)
+      setRighe([])
+    }
+
+    caricaCarrelli()
   }
 
   async function aggiornaPreferiti(materiali) {
@@ -330,7 +411,7 @@ export default function CarrelliPage() {
 
     try {
       const text = await file.text()
-      const righeFile = text.split("\n").filter(r => r.trim() !== "")
+      const righeFile = text.split(/\r?\n/).filter(r => r.trim() !== "")
 
       if (righeFile.length < 2) {
         alert("File vuoto o non valido")
@@ -349,11 +430,8 @@ export default function CarrelliPage() {
         const descrizione = colonne[6]?.trim()
         const quantita = leggiNumero(colonne[10]) || 1
 
-        const prezzo =
-          leggiNumero(colonne[11]) ||
-          leggiNumero(colonne[12]) ||
-          leggiNumero(colonne[13]) ||
-          0
+        const prezzo = trovaPrezzoDaColonne(colonne)
+        const totale = quantita * prezzo
 
         if (codice || descrizione) {
           materiali.push({
@@ -361,7 +439,7 @@ export default function CarrelliPage() {
             descrizione,
             quantita,
             prezzo,
-            totale: quantita * prezzo
+            totale
           })
         }
       }
@@ -422,7 +500,9 @@ export default function CarrelliPage() {
 
       await aggiornaPreferiti(materiali)
 
-      alert("✅ Carrello importato e preferiti aggiornati")
+      const conPrezzo = materiali.filter(m => Number(m.prezzo || 0) > 0).length
+
+      alert(`✅ Carrello importato e preferiti aggiornati\nRighe: ${materiali.length}\nRighe con prezzo: ${conPrezzo}`)
 
       caricaCarrelli()
 
@@ -605,6 +685,24 @@ export default function CarrelliPage() {
           >
             🛒 <b>{nomeCarrello}</b> — {c.data ? new Date(c.data).toLocaleDateString() : ""}
             {c.usata && <span> ✅ USATO</span>}
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                eliminaCarrello(c)
+              }}
+              style={{
+                marginLeft: 10,
+                background: "#dc3545",
+                color: "white",
+                border: "none",
+                padding: "5px 8px",
+                borderRadius: 5,
+                cursor: "pointer"
+              }}
+            >
+              🗑 Elimina
+            </button>
           </div>
         )
       })}
@@ -642,15 +740,17 @@ export default function CarrelliPage() {
 
           {righe.map((r, i) => (
             <div key={i} style={{
-              display: "flex",
-              justifyContent: "space-between",
+              display: "grid",
+              gridTemplateColumns: "120px 1fr 90px 110px",
               gap: 10,
               borderBottom: "1px solid #ddd",
-              padding: 5
+              padding: 5,
+              alignItems: "center"
             }}>
               <div>{r.codice || "-"}</div>
-              <div style={{ flex: 1 }}>{r.descrizione || "-"}</div>
+              <div>{r.descrizione || "-"}</div>
               <div>Qta: {r.quantita || 0}</div>
+              <div>{formatPrezzo(r.prezzo)}</div>
             </div>
           ))}
 

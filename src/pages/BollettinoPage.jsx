@@ -52,27 +52,33 @@ export default function BollettinoPage() {
   }
 
   function startDraw(e) {
+    e.preventDefault()
     drawing.current = true
     draw(e)
   }
 
   function endDraw() {
     drawing.current = false
-    const ctx = canvasRef.current.getContext("2d")
-    ctx.beginPath()
+    const ctx = canvasRef.current?.getContext("2d")
+    if (ctx) ctx.beginPath()
   }
 
   function draw(e) {
     if (!drawing.current) return
+
+    e.preventDefault()
 
     const rect = canvasRef.current.getBoundingClientRect()
     const ctx = canvasRef.current.getContext("2d")
 
     ctx.lineWidth = 2
     ctx.lineCap = "round"
+    ctx.strokeStyle = "black"
 
-    const x = (e.clientX || e.touches[0].clientX) - rect.left
-    const y = (e.clientY || e.touches[0].clientY) - rect.top
+    const touch = e.touches?.[0]
+
+    const x = (touch ? touch.clientX : e.clientX) - rect.left
+    const y = (touch ? touch.clientY : e.clientY) - rect.top
 
     ctx.lineTo(x, y)
     ctx.stroke()
@@ -327,22 +333,40 @@ Cordiali saluti.`
 
         ) : (
           <div>
-            <canvas
-              ref={canvasRef}
-              width={600}
-              height={150}
+            <div
               style={{
-                border: "1px solid black",
                 width: "100%",
-                borderRadius: 4
+                overflow: "hidden",
+                touchAction: "none",
+                overscrollBehavior: "contain",
+                WebkitOverflowScrolling: "auto",
+                position: "relative"
               }}
-              onMouseDown={startDraw}
-              onMouseUp={endDraw}
-              onMouseMove={draw}
-              onTouchStart={startDraw}
-              onTouchEnd={endDraw}
-              onTouchMove={draw}
-            />
+            >
+              <canvas
+                ref={canvasRef}
+                width={600}
+                height={180}
+                style={{
+                  border: "2px solid black",
+                  width: "100%",
+                  borderRadius: 8,
+                  background: "white",
+                  touchAction: "none",
+                  display: "block"
+                }}
+                onMouseDown={startDraw}
+                onMouseUp={endDraw}
+                onMouseMove={draw}
+                onMouseLeave={endDraw}
+                onTouchStart={startDraw}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  endDraw()
+                }}
+                onTouchMove={draw}
+              />
+            </div>
 
             <br /><br />
 

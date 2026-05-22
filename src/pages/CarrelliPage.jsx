@@ -116,6 +116,8 @@ export default function CarrelliPage() {
 
     let pulito = String(valore)
       .replace("€", "")
+      .replaceAll('"', "")
+      .replaceAll("'", "")
       .replace(/\s/g, "")
       .trim()
 
@@ -133,6 +135,7 @@ export default function CarrelliPage() {
 
   function formatPrezzo(valore) {
     const n = Number(valore || 0)
+
     return n.toLocaleString("it-IT", {
       style: "currency",
       currency: "EUR"
@@ -141,12 +144,12 @@ export default function CarrelliPage() {
 
   function trovaPrezzoDaColonne(colonne) {
     const indiciPossibili = [
-      11,
-      12,
-      13,
-      14,
-      15,
-      16,
+      12, // M - prezzo nel CSV Sonepar
+      11, // L
+      13, // N
+      14, // O
+      15, // P
+      16, // Q
       18,
       19,
       20,
@@ -421,15 +424,14 @@ export default function CarrelliPage() {
       const materiali = []
 
       const primaRiga = righeFile[1]?.split(";")
-      const nomeCarrello = primaRiga?.[17]?.trim() || "Carrello"
+      const nomeCarrello = primaRiga?.[17]?.replaceAll('"', "").trim() || "Carrello"
 
       for (let i = 1; i < righeFile.length; i++) {
         const colonne = righeFile[i].split(";")
 
-        const codice = colonne[1]?.trim()
-        const descrizione = colonne[6]?.trim()
+        const codice = colonne[1]?.replaceAll('"', "").trim()
+        const descrizione = colonne[6]?.replaceAll('"', "").trim()
         const quantita = leggiNumero(colonne[10]) || 1
-
         const prezzo = trovaPrezzoDaColonne(colonne)
         const totale = quantita * prezzo
 

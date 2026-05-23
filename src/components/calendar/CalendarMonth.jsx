@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
 import "dayjs/locale/it"
 import { supabase } from "../../supabaseClient"
@@ -6,6 +7,8 @@ import { supabase } from "../../supabaseClient"
 dayjs.locale("it")
 
 export default function CalendarMonth() {
+  const navigate = useNavigate()
+
   const [mese, setMese] = useState(dayjs())
   const [interventi, setInterventi] = useState([])
   const [operatori, setOperatori] = useState([])
@@ -146,6 +149,12 @@ export default function CalendarMonth() {
     vaiAgliInterventi()
   }
 
+  function nuovoInterventoDalCalendario() {
+    if (!giornoSelezionato) return
+
+    navigate(`/interventi?data=${giornoSelezionato}`)
+  }
+
   const interventiSelezionati = giornoSelezionato
     ? interventiDelGiorno(dayjs(giornoSelezionato))
     : []
@@ -239,6 +248,23 @@ export default function CalendarMonth() {
           <h2>
             Interventi del {dayjs(giornoSelezionato).format("DD/MM/YYYY")}
           </h2>
+
+          <div style={{ marginBottom: 15 }}>
+            <button
+              onClick={nuovoInterventoDalCalendario}
+              style={{
+                background: "#198754",
+                color: "white",
+                border: "none",
+                padding: "10px 14px",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+            >
+              ➕ Nuovo intervento
+            </button>
+          </div>
 
           {operatoreFiltro && clientiGiornata.length > 0 && (
             <div style={clientiGiornoBox}>

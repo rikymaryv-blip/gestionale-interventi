@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { supabase } from "../supabaseClient"
 
@@ -20,8 +20,20 @@ export default function CarrelliPage() {
   const [dataDa, setDataDa] = useState("")
   const [dataA, setDataA] = useState("")
 
+  const [filtro1, setFiltro1] = useState("")
+  const [filtro2, setFiltro2] = useState("")
+  const [filtro3, setFiltro3] = useState("")
+  const [filtro4, setFiltro4] = useState("")
+
+  const ref1 = useRef(null)
+  const ref2 = useRef(null)
+  const ref3 = useRef(null)
+  const ref4 = useRef(null)
+  const risultatiMaterialiRef = useRef(null)
+
   const [importando, setImportando] = useState(false)
   const [caricandoCSV, setCaricandoCSV] = useState(false)
+  const [mostraPrezzi, setMostraPrezzi] = useState(false)
 
   useEffect(() => {
     caricaCarrelli()
@@ -91,6 +103,10 @@ export default function CarrelliPage() {
     }
 
     setSelected(c)
+    setFiltro1("")
+    setFiltro2("")
+    setFiltro3("")
+    setFiltro4("")
 
     if (interventoIdDaUrl) {
       setInterventoSelezionato(interventoIdDaUrl)
@@ -142,14 +158,41 @@ export default function CarrelliPage() {
     })
   }
 
+  function sbloccaPrezzi() {
+    if (mostraPrezzi) {
+      setMostraPrezzi(false)
+      return
+    }
+
+    const codice = window.prompt("Inserisci codice")
+
+    if (codice === "1234") {
+      setMostraPrezzi(true)
+    } else if (codice !== null) {
+      alert("Codice errato")
+    }
+  }
+
+  function normalizzaTesto(testo) {
+    return String(testo || "")
+      .toLowerCase()
+      .replaceAll(",", " ")
+      .replaceAll(".", " ")
+      .replaceAll("-", " ")
+      .replaceAll("_", " ")
+      .replaceAll("/", " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
   function trovaPrezzoDaColonne(colonne) {
     const indiciPossibili = [
-      12, // M - prezzo nel CSV Sonepar
-      11, // L
-      13, // N
-      14, // O
-      15, // P
-      16, // Q
+      12,
+      11,
+      13,
+      14,
+      15,
+      16,
       18,
       19,
       20,
@@ -353,7 +396,7 @@ export default function CarrelliPage() {
         )
       )
 
-      const materialiDaInserire = righe
+      const materialiDaInserire = righeFiltrate
         .filter(r => r.codice || r.descrizione)
         .filter(r => {
           const key = `${String(r.codice || "").trim()}_${String(r.descrizione || "").trim()}`
@@ -370,7 +413,7 @@ export default function CarrelliPage() {
         }))
 
       if (materialiDaInserire.length === 0) {
-        alert("Tutti i materiali di questo carrello risultano già presenti nell’intervento")
+        alert("Tutti i materiali filtrati risultano già presenti nell’intervento oppure non ci sono righe da importare")
         return
       }
 
@@ -384,7 +427,7 @@ export default function CarrelliPage() {
         return
       }
 
-      await aggiornaPreferiti(righe)
+      await aggiornaPreferiti(righeFiltrate)
 
       const { error: updateError } = await supabase
         .from("bolle_acquisto")
@@ -397,7 +440,7 @@ export default function CarrelliPage() {
         return
       }
 
-      alert("✅ Inserito nell’intervento")
+      alert("✅ Materiali filtrati inseriti nell’intervento")
 
       setSelected(null)
       setRighe([])
@@ -528,6 +571,22 @@ export default function CarrelliPage() {
     return nomeOk && daOk && aOk
   })
 
+  const righeFiltrate = righe.filter(r => {
+    const testoCompleto = normalizzaTesto(`
+      ${r.codice || ""}
+      ${r.descrizione || ""}
+      ${r.produttore || ""}
+      ${r.marca || ""}
+      ${r.ean || ""}
+    `)
+
+    const filtri = [filtro1, filtro2, filtro3, filtro4]
+      .map(normalizzaTesto)
+      .filter(Boolean)
+
+    return filtri.every(filtro => testoCompleto.includes(filtro))
+  })
+
   return (
     <div style={{ padding: 20 }}>
 
@@ -607,7 +666,7 @@ export default function CarrelliPage() {
         </div>
       )}
 
-      <h3 style={{ marginTop: 20 }}>Filtri</h3>
+      <h3 style={{ marginTop: 20 }}>Filtri carrelli</h3>
 
       <div style={{
         display: "flex",
@@ -720,15 +779,105 @@ export default function CarrelliPage() {
           <h3 style={{ marginTop: 0 }}>📦 Righe carrello</h3>
 
           <button
+            onClick={sbloccaPrezzi}
+            style={{
+              marginBottom: 10,
+              background: mostraPrezzi ? "#dc3545" : "#198754",
+              color: "white",
+              border: "none",
+              padding: "8px 12px",
+              borderRadius: 5,
+              cursor: "pointer"
+            }}
+          >
+            {mostraPrezzi ? "🙈 Nascondi prezzi" : "👁 Mostra prezzi"}
+          </button>
+
+          <button
             onClick={() => {
               setSelected(null)
               setRighe([])
             }}
+            style={{ marginLeft: 10 }}
           >
             ❌ Chiudi
           </button>
 
-          {righe.length === 0 && (
+          <div style={{
+            marginTop: 10,
+            marginBottom: 10,
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center"
+          }}>
+            <input
+              ref={ref1}
+              placeholder="Filtro 1 es. PHL..."
+              value={filtro1}
+              onChange={(e) => setFiltro1(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") ref2.current?.focus()
+              }}
+              style={{ minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+            />
+
+            <input
+              ref={ref2}
+              placeholder="Filtro 2 es. GU..."
+              value={filtro2}
+              onChange={(e) => setFiltro2(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") ref3.current?.focus()
+              }}
+              style={{ minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+            />
+
+            <input
+              ref={ref3}
+              placeholder="Filtro 3 es. 3000..."
+              value={filtro3}
+              onChange={(e) => setFiltro3(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") ref4.current?.focus()
+              }}
+              style={{ minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+            />
+
+            <input
+              ref={ref4}
+              placeholder="Filtro 4 es. 15000..."
+              value={filtro4}
+              onChange={(e) => setFiltro4(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  risultatiMaterialiRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                  })
+                }
+              }}
+              style={{ minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+            />
+
+            <button
+              onClick={() => {
+                setFiltro1("")
+                setFiltro2("")
+                setFiltro3("")
+                setFiltro4("")
+                ref1.current?.focus()
+              }}
+            >
+              Reset materiali
+            </button>
+          </div>
+
+          <div ref={risultatiMaterialiRef} style={{ marginBottom: 10 }}>
+            Materiali trovati: <b>{righeFiltrate.length}</b> / {righe.length}
+          </div>
+
+          {righeFiltrate.length === 0 && (
             <div style={{
               marginTop: 10,
               padding: 10,
@@ -736,14 +885,16 @@ export default function CarrelliPage() {
               border: "1px solid #ddd",
               borderRadius: 6
             }}>
-              Nessuna riga trovata per questo carrello.
+              Nessuna riga trovata con questi filtri.
             </div>
           )}
 
-          {righe.map((r, i) => (
+          {righeFiltrate.map((r, i) => (
             <div key={i} style={{
               display: "grid",
-              gridTemplateColumns: "120px 1fr 90px 110px",
+              gridTemplateColumns: mostraPrezzi
+                ? "120px 1fr 90px 110px"
+                : "120px 1fr 90px",
               gap: 10,
               borderBottom: "1px solid #ddd",
               padding: 5,
@@ -752,7 +903,10 @@ export default function CarrelliPage() {
               <div>{r.codice || "-"}</div>
               <div>{r.descrizione || "-"}</div>
               <div>Qta: {r.quantita || 0}</div>
-              <div>{formatPrezzo(r.prezzo)}</div>
+
+              {mostraPrezzi && (
+                <div>{formatPrezzo(r.prezzo)}</div>
+              )}
             </div>
           ))}
 
@@ -804,7 +958,7 @@ export default function CarrelliPage() {
               cursor: selected?.usata || importando ? "not-allowed" : "pointer"
             }}
           >
-            {importando ? "Inserimento..." : "📥 Inserisci nell’intervento"}
+            {importando ? "Inserimento..." : "📥 Inserisci materiali filtrati nell’intervento"}
           </button>
 
           {(interventoIdDaUrl || interventoSelezionato) && (

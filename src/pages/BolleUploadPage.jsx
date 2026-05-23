@@ -140,6 +140,7 @@ export default function BolleUploadPage() {
     const { data, error } = await supabase
       .from("bolle_acquisto")
       .select("*")
+      .or("tipo.is.null,tipo.eq.bolla")
       .order("data", { ascending: false })
       .order("id", { ascending: false })
 
@@ -415,6 +416,7 @@ export default function BolleUploadPage() {
             nome_carrello: b.nome_carrello || null,
             usata: false,
             data: b.data || null,
+            tipo: "bolla",
           },
         ])
         .select()

@@ -8,6 +8,7 @@ export default function InterventiPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const editIdDaUrl = searchParams.get("edit_id")
+  const dataDaUrl = searchParams.get("data")
 
   const [clienti, setClienti] = useState([])
   const [cantieri, setCantieri] = useState([])
@@ -34,7 +35,7 @@ export default function InterventiPage() {
     cliente_id: "",
     cliente_nome: "",
     cantiere_id: "",
-    data: dayjs().format("YYYY-MM-DD"),
+    data: dataDaUrl || dayjs().format("YYYY-MM-DD"),
     descrizione: "",
     operatori: [],
     materiali: []
@@ -323,7 +324,7 @@ export default function InterventiPage() {
       cliente_id: "",
       cliente_nome: "",
       cantiere_id: "",
-      data: dayjs().format("YYYY-MM-DD"),
+      data: dataDaUrl || dayjs().format("YYYY-MM-DD"),
       descrizione: "",
       operatori: [],
       materiali: []
@@ -336,7 +337,13 @@ export default function InterventiPage() {
       quantita: 1
     })
     setShowAltroMat(false)
-    navigate("/interventi")
+
+    if (dataDaUrl) {
+      navigate(`/interventi?data=${dataDaUrl}`)
+    } else {
+      navigate("/interventi")
+    }
+
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
@@ -435,7 +442,7 @@ export default function InterventiPage() {
         cliente_id: "",
         cliente_nome: "",
         cantiere_id: "",
-        data: dayjs().format("YYYY-MM-DD"),
+        data: dataDaUrl || dayjs().format("YYYY-MM-DD"),
         descrizione: "",
         operatori: [],
         materiali: []
@@ -493,7 +500,7 @@ export default function InterventiPage() {
         cliente_id: "",
         cliente_nome: "",
         cantiere_id: "",
-        data: dayjs().format("YYYY-MM-DD"),
+        data: dataDaUrl || dayjs().format("YYYY-MM-DD"),
         descrizione: "",
         operatori: [],
         materiali: []

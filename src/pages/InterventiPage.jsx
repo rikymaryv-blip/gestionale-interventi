@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { supabase } from "../supabaseClient"
 import dayjs from "dayjs"
 import { useNavigate, useSearchParams } from "react-router-dom"
@@ -19,6 +19,18 @@ export default function InterventiPage() {
   const [editingId, setEditingId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [aperturaAutomaticaFatta, setAperturaAutomaticaFatta] = useState(false)
+  const [clienteEvidenziato, setClienteEvidenziato] = useState(0)
+  const [operatoriRicerca, setOperatoriRicerca] = useState([])
+  const [showOperatori, setShowOperatori] = useState([])
+  const [operatoreEvidenziato, setOperatoreEvidenziato] = useState([])
+
+  const clienteInputRef = useRef(null)
+  const cantiereSelectRef = useRef(null)
+  const dataInputRef = useRef(null)
+  const descrizioneInputRef = useRef(null)
+  const operatoreInputRefs = useRef([])
+  const oreInputRefs = useRef([])
+  const salvaButtonRef = useRef(null)
 
   const [preferiti, setPreferiti] = useState([])
   const [searchMat, setSearchMat] = useState("")
@@ -47,6 +59,12 @@ export default function InterventiPage() {
     loadAll()
     caricaInterventi()
     caricaPreferiti()
+  }, [])
+
+  useEffect(() => {
+    setTimeout(() => {
+      clienteInputRef.current?.focus()
+    }, 150)
   }, [])
 
   useEffect(() => {
@@ -139,7 +157,311 @@ export default function InterventiPage() {
     }
   }
 
-  async function selezionaCliente(c) {
+  function clientiFiltrati() {
+    const testo = form.cliente_nome.trim().toLowerCase()
+
+    if (!testo) return []
+
+    return clienti
+      .filter(c => c.nome.toLowerCase().includes(testo))
+      .slice(0, 8)
+  }
+
+  function vaiAllaData() {
+    setTimeout(() => {
+      dataInputRef.current?.focus()
+    }, 100)
+  }
+
+  function vaiAlCantiere() {
+    setTimeout(() => {
+      if (cantiereSelectRef.current && cantieri.length > 0) {
+        cantiereSelectRef.current.focus()
+      } else {
+        dataInputRef.current?.focus()
+      }
+    }, 150)
+  }
+
+  function gestisciTastieraCliente(e) {
+    const lista = clientiFiltrati()
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      if (!lista.length) return
+      setShowClienti(true)
+      setClienteEvidenziato(prev =>
+        prev >= lista.length - 1 ? 0 : prev + 1
+      )
+      return
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault()
+      if (!lista.length) return
+      setShowClienti(true)
+      setClienteEvidenziato(prev =>
+        prev <= 0 ? lista.length - 1 : prev - 1
+      )
+      return
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault()
+      if (lista.length > 0) {
+        selezionaCliente(lista[clienteEvidenziato] || lista[0], true)
+      } else {
+        cantiereSelectRef.current?.focus()
+      }
+    }
+  }
+
+  function gestisciTastieraCantiere(e) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      dataInputRef.current?.focus()
+    }
+  }
+
+  function gestisciTastieraData(e) {
+    const dataBase = form.data ? dayjs(form.data) : dayjs()
+    let nuovaData = null
+
+    if (e.key === "ArrowLeft") {
+      e.preventDefault()
+      nuovaData = dataBase.subtract(1, "day")
+    }
+
+    if (e.key === "ArrowRight") {
+      e.preventDefault()
+      nuovaData = dataBase.add(1, "day")
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault()
+      nuovaData = dataBase.subtract(1, "month")
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      nuovaData = dataBase.add(1, "month")
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault()
+      descrizioneInputRef.current?.focus()
+      return
+    }
+
+    if (nuovaData) {
+      setForm(prev => ({
+        ...prev,
+        data: nuovaData.format("YYYY-MM-DD")
+      }))
+    }
+  }
+
+  function gestisciTastieraDescrizione(e) {
+    if (e.key !== "Enter" && e.code !== "NumpadEnter") return
+
+    e.preventDefault()
+    e.stopPropagation()
+    vaiAgliOperatori()
+  }
+
+  function vaiAgliOperatori() {
+    const primoVuoto = form.operatori.findIndex(op => !op.operatore_id)
+
+    if (primoVuoto >= 0) {
+      setTimeout(() => {
+        operatoreInputRefs.current[primoVuoto]?.focus()
+      }, 100)
+      return
+    }
+
+    const nuovoIndex = form.operatori.length
+
+    setForm(prev => ({
+      ...prev,
+      operatori: [...prev.operatori, { operatore_id: "", ore: "" }]
+    }))
+
+    setOperatoriRicerca(prev => {
+      const nuovo = [...prev]
+      nuovo[nuovoIndex] = ""
+      return nuovo
+    })
+
+    setShowOperatori(prev => {
+      const nuovo = [...prev]
+      nuovo[nuovoIndex] = false
+      return nuovo
+    })
+
+    setOperatoreEvidenziato(prev => {
+      const nuovo = [...prev]
+      nuovo[nuovoIndex] = 0
+      return nuovo
+    })
+
+    setTimeout(() => {
+      operatoreInputRefs.current[nuovoIndex]?.focus()
+      operatoreInputRefs.current[nuovoIndex]?.select()
+    }, 200)
+  }
+
+  function nomeOperatoreDaId(id) {
+    return operatoriDB.find(op => String(op.id) === String(id))?.nome || ""
+  }
+
+  function operatoriFiltrati(index) {
+    const testo = (operatoriRicerca[index] || "").trim().toLowerCase()
+
+    if (!testo) return []
+
+    const inizioUguale = operatoriDB.filter(op =>
+      op.nome.toLowerCase().startsWith(testo)
+    )
+
+    const contieneTesto = operatoriDB.filter(op =>
+      !op.nome.toLowerCase().startsWith(testo) &&
+      op.nome.toLowerCase().includes(testo)
+    )
+
+    return [
+      ...inizioUguale,
+      ...contieneTesto
+    ].slice(0, 8)
+  }
+
+  function aggiornaRicercaOperatore(index, valore) {
+    setOperatoriRicerca(prev => {
+      const nuovo = [...prev]
+      nuovo[index] = valore
+      return nuovo
+    })
+
+    setShowOperatori(prev => {
+      const nuovo = [...prev]
+      nuovo[index] = true
+      return nuovo
+    })
+
+    setOperatoreEvidenziato(prev => {
+      const nuovo = [...prev]
+      nuovo[index] = 0
+      return nuovo
+    })
+
+    setForm(prev => ({
+      ...prev,
+      operatori: prev.operatori.map((op, i) =>
+        i === index ? { ...op, operatore_id: "" } : op
+      )
+    }))
+  }
+
+  function selezionaOperatore(op, index, passaAlleOre = false) {
+    setForm(prev => ({
+      ...prev,
+      operatori: prev.operatori.map((riga, i) =>
+        i === index ? { ...riga, operatore_id: op.id } : riga
+      )
+    }))
+
+    setOperatoriRicerca(prev => {
+      const nuovo = [...prev]
+      nuovo[index] = op.nome
+      return nuovo
+    })
+
+    setShowOperatori(prev => {
+      const nuovo = [...prev]
+      nuovo[index] = false
+      return nuovo
+    })
+
+    if (passaAlleOre) {
+      setTimeout(() => {
+        oreInputRefs.current[index]?.focus()
+        oreInputRefs.current[index]?.select()
+      }, 100)
+    }
+  }
+
+  function gestisciTastieraOperatore(e, index) {
+    const lista = operatoriFiltrati(index)
+    const testo = (operatoriRicerca[index] || "").trim()
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      if (!lista.length) return
+      setShowOperatori(prev => {
+        const nuovo = [...prev]
+        nuovo[index] = true
+        return nuovo
+      })
+      setOperatoreEvidenziato(prev => {
+        const nuovo = [...prev]
+        const attuale = nuovo[index] || 0
+        nuovo[index] = attuale >= lista.length - 1 ? 0 : attuale + 1
+        return nuovo
+      })
+      return
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault()
+      if (!lista.length) return
+      setShowOperatori(prev => {
+        const nuovo = [...prev]
+        nuovo[index] = true
+        return nuovo
+      })
+      setOperatoreEvidenziato(prev => {
+        const nuovo = [...prev]
+        const attuale = nuovo[index] || 0
+        nuovo[index] = attuale <= 0 ? lista.length - 1 : attuale - 1
+        return nuovo
+      })
+      return
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault()
+
+      if (!testo && !form.operatori[index]?.operatore_id) {
+        salvaButtonRef.current?.focus()
+        return
+      }
+
+      if (lista.length > 0 && !form.operatori[index]?.operatore_id) {
+        selezionaOperatore(lista[operatoreEvidenziato[index] || 0] || lista[0], index, true)
+        return
+      }
+
+      if (form.operatori[index]?.operatore_id) {
+        oreInputRefs.current[index]?.focus()
+        oreInputRefs.current[index]?.select()
+      }
+    }
+  }
+
+  function gestisciTastieraOre(e, index) {
+    if (e.key !== "Enter") return
+
+    e.preventDefault()
+
+    const ore = Number(form.operatori[index]?.ore || 0)
+
+    if (ore > 0) {
+      aggiungiOperatore(true)
+    } else {
+      salvaButtonRef.current?.focus()
+    }
+  }
+
+  async function selezionaCliente(c, passaAlCampoDopo = false) {
     setForm(prev => ({
       ...prev,
       cliente_id: c.id,
@@ -162,6 +484,16 @@ export default function InterventiPage() {
     }
 
     setCantieri(data || [])
+
+    if (passaAlCampoDopo) {
+      setTimeout(() => {
+        if ((data || []).length > 0) {
+          cantiereSelectRef.current?.focus()
+        } else {
+          dataInputRef.current?.focus()
+        }
+      }, 100)
+    }
   }
 
   function aggiungiMateriale(item) {
@@ -289,11 +621,37 @@ export default function InterventiPage() {
     setShowAltroMat(false)
   }
 
-  function aggiungiOperatore() {
+  function aggiungiOperatore(focusNuovo = false) {
+    const nuovoIndex = form.operatori.length
+
     setForm(prev => ({
       ...prev,
       operatori: [...prev.operatori, { operatore_id: "", ore: "" }]
     }))
+
+    setOperatoriRicerca(prev => {
+      const nuovo = [...prev]
+      nuovo[nuovoIndex] = ""
+      return nuovo
+    })
+
+    setShowOperatori(prev => {
+      const nuovo = [...prev]
+      nuovo[nuovoIndex] = false
+      return nuovo
+    })
+
+    setOperatoreEvidenziato(prev => {
+      const nuovo = [...prev]
+      nuovo[nuovoIndex] = 0
+      return nuovo
+    })
+
+    if (focusNuovo) {
+      setTimeout(() => {
+        operatoreInputRefs.current[nuovoIndex]?.focus()
+      }, 120)
+    }
   }
 
   function aggiornaOperatore(i, campo, valore) {
@@ -310,6 +668,10 @@ export default function InterventiPage() {
       ...prev,
       operatori: prev.operatori.filter((_, idx) => idx !== i)
     }))
+
+    setOperatoriRicerca(prev => prev.filter((_, idx) => idx !== i))
+    setShowOperatori(prev => prev.filter((_, idx) => idx !== i))
+    setOperatoreEvidenziato(prev => prev.filter((_, idx) => idx !== i))
   }
 
   function nuovoIntervento() {
@@ -330,6 +692,9 @@ export default function InterventiPage() {
       materiali: []
     })
     setCantieri([])
+    setOperatoriRicerca([])
+    setShowOperatori([])
+    setOperatoreEvidenziato([])
     setSearchMat("")
     setAltroMat({
       codice: "",
@@ -337,12 +702,15 @@ export default function InterventiPage() {
       quantita: 1
     })
     setShowAltroMat(false)
-
     if (dataDaUrl) {
       navigate(`/interventi?data=${dataDaUrl}`)
     } else {
       navigate("/interventi")
     }
+
+    setTimeout(() => {
+      clienteInputRef.current?.focus()
+    }, 150)
 
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -375,16 +743,18 @@ export default function InterventiPage() {
       return
     }
 
+    const operatoriCaricati = (ops || []).map(o => ({
+      operatore_id: o.operatore_id,
+      ore: o.ore
+    }))
+
     setForm({
       cliente_id: i.cliente_id || "",
       cliente_nome: i.clienti?.nome || "",
       cantiere_id: i.cantiere_id || "",
       data: i.data || dayjs().format("YYYY-MM-DD"),
       descrizione: i.descrizione || "",
-      operatori: (ops || []).map(o => ({
-        operatore_id: o.operatore_id,
-        ore: o.ore
-      })),
+      operatori: operatoriCaricati,
       materiali: (mats || []).map(m => ({
         id: m.id,
         codice: m.codice || "",
@@ -392,6 +762,10 @@ export default function InterventiPage() {
         quantita: m.codice === "BOLLA" ? 0 : (m.quantita || 1)
       }))
     })
+
+    setOperatoriRicerca(operatoriCaricati.map(o => nomeOperatoreDaId(o.operatore_id)))
+    setShowOperatori(operatoriCaricati.map(() => false))
+    setOperatoreEvidenziato(operatoriCaricati.map(() => 0))
 
     setAltroMat({
       codice: "",
@@ -709,14 +1083,17 @@ export default function InterventiPage() {
 
       <div style={{ position: "relative" }}>
         <input
+          ref={clienteInputRef}
           placeholder="Cerca cliente..."
           value={form.cliente_nome}
           onChange={(e) => {
             setForm({ ...form, cliente_nome: e.target.value, cliente_id: "", cantiere_id: "" })
             setCantieri([])
             setShowClienti(true)
+            setClienteEvidenziato(0)
           }}
           onFocus={() => setShowClienti(true)}
+          onKeyDown={gestisciTastieraCliente}
           onBlur={() => setTimeout(() => setShowClienti(false), 200)}
         />
 
@@ -728,20 +1105,24 @@ export default function InterventiPage() {
             width: "100%",
             zIndex: 10
           }}>
-            {clienti
-              .filter(c => c.nome.toLowerCase().includes(form.cliente_nome.toLowerCase()))
-              .slice(0, 5)
-              .map(c => (
+            {clientiFiltrati()
+              .map((c, index) => (
                 <div
                   key={c.id}
-                  onClick={() => selezionaCliente(c)}
-                  style={{ padding: 5, cursor: "pointer" }}
+                  onMouseEnter={() => setClienteEvidenziato(index)}
+                  onClick={() => selezionaCliente(c, true)}
+                  style={{
+                    padding: 8,
+                    cursor: "pointer",
+                    background: clienteEvidenziato === index ? "#dbeafe" : "white",
+                    fontWeight: clienteEvidenziato === index ? "bold" : "normal"
+                  }}
                 >
                   {c.nome}
                 </div>
               ))}
 
-            {clienti.filter(c => c.nome.toLowerCase().includes(form.cliente_nome.toLowerCase())).length === 0 && (
+            {clientiFiltrati().length === 0 && (
               <div style={{ padding: 5, color: "#777" }}>
                 Nessun cliente trovato
               </div>
@@ -751,8 +1132,10 @@ export default function InterventiPage() {
       </div>
 
       <select
+        ref={cantiereSelectRef}
         value={form.cantiere_id}
         onChange={e => setForm({ ...form, cantiere_id: e.target.value })}
+        onKeyDown={gestisciTastieraCantiere}
       >
         <option value="">Seleziona cantiere</option>
         {cantieri.map(c => (
@@ -761,45 +1144,108 @@ export default function InterventiPage() {
       </select>
 
       <input
+        ref={dataInputRef}
         type="date"
         value={form.data}
         onChange={e => setForm({ ...form, data: e.target.value })}
+        onKeyDown={gestisciTastieraData}
       />
 
       <input
+        ref={descrizioneInputRef}
         placeholder="Descrizione"
         value={form.descrizione}
         onChange={e => setForm({ ...form, descrizione: e.target.value })}
+        onKeyDown={gestisciTastieraDescrizione}
+        onKeyUp={gestisciTastieraDescrizione}
       />
 
       <h4>Operatori</h4>
 
       {form.operatori.map((op, i) => (
-        <div key={i} style={{ display: "flex", gap: 10 }}>
-          <select
-            value={op.operatore_id}
-            onChange={e => aggiornaOperatore(i, "operatore_id", e.target.value)}
-          >
-            <option value="">Seleziona</option>
-            {operatoriDB.map(o => (
-              <option key={o.id} value={o.id}>{o.nome}</option>
-            ))}
-          </select>
+        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8, flexWrap: "wrap" }}>
+          <div style={{ position: "relative", minWidth: 240, flex: 1 }}>
+            <input
+              ref={el => operatoreInputRefs.current[i] = el}
+              placeholder="Cerca operatore..."
+              value={operatoriRicerca[i] ?? nomeOperatoreDaId(op.operatore_id)}
+              onChange={e => aggiornaRicercaOperatore(i, e.target.value)}
+              onFocus={() => {
+                setShowOperatori(prev => {
+                  const nuovo = [...prev]
+                  nuovo[i] = true
+                  return nuovo
+                })
+              }}
+              onKeyDown={e => gestisciTastieraOperatore(e, i)}
+              onBlur={() => {
+                setTimeout(() => {
+                  setShowOperatori(prev => {
+                    const nuovo = [...prev]
+                    nuovo[i] = false
+                    return nuovo
+                  })
+                }, 200)
+              }}
+              style={{ width: "100%" }}
+            />
+
+            {showOperatori[i] && operatoriRicerca[i] && (
+              <div style={{
+                border: "1px solid #ccc",
+                position: "absolute",
+                background: "white",
+                width: "100%",
+                zIndex: 20
+              }}>
+                {operatoriFiltrati(i).map((operatore, index) => (
+                  <div
+                    key={operatore.id}
+                    onMouseEnter={() => {
+                      setOperatoreEvidenziato(prev => {
+                        const nuovo = [...prev]
+                        nuovo[i] = index
+                        return nuovo
+                      })
+                    }}
+                    onClick={() => selezionaOperatore(operatore, i, true)}
+                    style={{
+                      padding: 8,
+                      cursor: "pointer",
+                      background: (operatoreEvidenziato[i] || 0) === index ? "#dbeafe" : "white",
+                      fontWeight: (operatoreEvidenziato[i] || 0) === index ? "bold" : "normal"
+                    }}
+                  >
+                    {operatore.nome}
+                  </div>
+                ))}
+
+                {operatoriFiltrati(i).length === 0 && (
+                  <div style={{ padding: 5, color: "#777" }}>
+                    Nessun operatore trovato
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <input
+            ref={el => oreInputRefs.current[i] = el}
             type="number"
             min="0"
             step="0.5"
             placeholder="Ore"
             value={op.ore}
             onChange={e => aggiornaOperatore(i, "ore", e.target.value)}
+            onKeyDown={e => gestisciTastieraOre(e, i)}
+            style={{ width: 90 }}
           />
 
           <button onClick={() => eliminaOperatore(i)}>❌</button>
         </div>
       ))}
 
-      <button onClick={aggiungiOperatore}>➕ Operatore</button>
+      <button onClick={() => aggiungiOperatore(true)}>➕ Operatore</button>
 
       <br /><br />
 
@@ -810,6 +1256,7 @@ export default function InterventiPage() {
         flexWrap: "wrap"
       }}>
         <button
+          ref={salvaButtonRef}
           onClick={salva}
           disabled={saving}
           style={{

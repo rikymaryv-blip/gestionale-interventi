@@ -155,6 +155,10 @@ export default function CalendarMonth() {
     navigate(`/interventi?data=${giornoSelezionato}`)
   }
 
+  function modificaIntervento(id) {
+    navigate(`/interventi?edit_id=${id}`)
+  }
+
   const interventiSelezionati = giornoSelezionato
     ? interventiDelGiorno(dayjs(giornoSelezionato))
     : []
@@ -314,6 +318,15 @@ export default function CalendarMonth() {
                 ) : (
                   <p>Nessun operatore inserito.</p>
                 )}
+
+                <div style={{ marginTop: "12px" }}>
+                  <button
+                    onClick={() => modificaIntervento(intervento.id)}
+                    style={modifyButton}
+                  >
+                    ✏️ Modifica intervento
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -419,4 +432,14 @@ const card = {
   borderRadius: "10px",
   padding: "15px",
   marginBottom: "12px",
+}
+
+const modifyButton = {
+  background: "#1976d2",
+  color: "white",
+  border: "none",
+  padding: "10px 14px",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: "bold",
 }

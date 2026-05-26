@@ -26,6 +26,7 @@ import OreOperatoriExcelPage from "./pages/OreOperatoriExcelPage"
 import PuntiLucePage from "./pages/PuntiLucePage"
 import PuntiLuceVociPage from "./pages/PuntiLuceVociPage"
 import PuntiLuceStanzeTipoPage from "./pages/PuntiLuceStanzeTipoPage"
+import ListaOrdinePage from "./pages/ListaOrdinePage"
 
 // MENU
 function Menu() {
@@ -139,6 +140,7 @@ function Menu() {
           {btn("/bolle", "Bolle", "📥")}
           {btn("/carrelli", "Carrelli", "🛒")}
           {btn("/preferiti", "Preferiti", "⭐")}
+          {btn("/lista-ordine", "Lista Ordine", "🧾")}
           {btn("/listino", "Listino", "📦")}
         </div>
       )
@@ -207,6 +209,7 @@ export default function App() {
           <Route path="/bolle" element={<BolleUploadPage />} />
           <Route path="/carrelli" element={<CarrelliPage />} />
           <Route path="/preferiti" element={<PreferitiPage />} />
+          <Route path="/lista-ordine" element={<ListaOrdinePage />} />
           <Route path="/ore-operatori-excel" element={<OreOperatoriExcelPage />} />
           <Route path="/test" element={<TestCantieri />} />
           <Route path="/storico-interventi" element={<StoricoInterventiPage />} />

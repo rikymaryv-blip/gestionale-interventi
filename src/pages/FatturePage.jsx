@@ -4,8 +4,9 @@ import { supabase } from "../supabaseClient"
 import { useNavigate } from "react-router-dom"
 
 export default function FatturePage() {
-
   const [clientiMap, setClientiMap] = useState({})
+  const [selezionati, setSelezionati] = useState({})
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -13,6 +14,7 @@ export default function FatturePage() {
   }, [])
 
   async function load() {
+    setLoading(true)
 
     const { data, error } = await supabase
       .from("interventi")
@@ -20,6 +22,7 @@ export default function FatturePage() {
         id,
         data,
         descrizione,
+        archiviato,
         clienti(nome),
         ore_operatori(
           ore,
@@ -31,7 +34,10 @@ export default function FatturePage() {
           quantita
         )
       `)
-      .eq("stato", "attivo")
+      .or("archiviato.is.null,archiviato.eq.false")
+      .order("data", { ascending: true })
+
+    setLoading(false)
 
     if (error) {
       console.error("ERRORE LOAD:", error)
@@ -41,7 +47,7 @@ export default function FatturePage() {
 
     const map = {}
 
-    data?.forEach(i => {
+    data?.forEach((i) => {
       const nome = i.clienti?.nome || "Senza nome"
 
       if (!map[nome]) map[nome] = []
@@ -49,9 +55,9 @@ export default function FatturePage() {
     })
 
     setClientiMap(map)
+    setSelezionati({})
   }
 
-  // 🔥 FUNZIONE PER PRENDERE NOME OPERATORE
   async function getNomeOperatore(id) {
     if (!id) return "Operatore"
 
@@ -64,37 +70,74 @@ export default function FatturePage() {
     return data?.nome || "Operatore"
   }
 
+  function toggleIntervento(cliente, id) {
+    setSelezionati((prev) => {
+      const attuali = prev[cliente] || []
+
+      const nuovi = attuali.includes(id)
+        ? attuali.filter((x) => x !== id)
+        : [...attuali, id]
+
+      return {
+        ...prev,
+        [cliente]: nuovi,
+      }
+    })
+  }
+
+  function selezionaTuttiCliente(cliente) {
+    const lista = clientiMap[cliente] || []
+    const tuttiId = lista.map((i) => i.id)
+
+    setSelezionati((prev) => ({
+      ...prev,
+      [cliente]: tuttiId,
+    }))
+  }
+
+  function deselezionaTuttiCliente(cliente) {
+    setSelezionati((prev) => ({
+      ...prev,
+      [cliente]: [],
+    }))
+  }
+
   async function creaFattura(cliente) {
+    const listaCompleta = clientiMap[cliente] || []
+    const idsSelezionati = selezionati[cliente] || []
 
-    const lista = clientiMap[cliente]
+    const lista = listaCompleta.filter((i) => idsSelezionati.includes(i.id))
 
-    if (!lista || lista.length === 0) {
-      alert("Nessun intervento")
+    if (lista.length === 0) {
+      alert("Seleziona almeno un intervento da fatturare")
       return
     }
 
-    // CREA FATTURA
+    const conferma = window.confirm(
+      `Vuoi creare la fattura per ${lista.length} interventi di ${cliente}?`
+    )
+
+    if (!conferma) return
+
     const { data: fattura, error } = await supabase
       .from("fatture")
-      .insert([{
-        cliente_nome: cliente,
-        data: new Date().toISOString()
-      }])
+      .insert([
+        {
+          cliente_nome: cliente,
+          data: new Date().toISOString(),
+        },
+      ])
       .select()
       .single()
 
     if (error || !fattura) {
       console.error(error)
-      alert("Errore creazione fattura")
+      alert("Errore creazione fattura. Controlla che la tabella fatture esista.")
       return
     }
 
-    // 🔥 INSERIMENTO RIGHE
     for (const i of lista) {
-
-      // 👉 OPERATORI CON NOME REALE
       for (const o of i.ore_operatori || []) {
-
         const nomeOperatore = await getNomeOperatore(o.operatore_id)
 
         await supabase.from("fatture_righe").insert({
@@ -102,27 +145,29 @@ export default function FatturePage() {
           data: i.data,
           descrizione: i.descrizione,
           operatore: nomeOperatore,
-          ore: o.ore
+          ore: o.ore,
         })
       }
 
-      // 👉 MATERIALI CON CODICE
       for (const m of i.materiali_bollettino || []) {
-
         await supabase.from("fatture_righe").insert({
           fattura_id: fattura.id,
+          data: i.data,
+          descrizione: i.descrizione,
           codice: m.codice || "",
           materiale: m.descrizione || "",
-          quantita: m.quantita || 0
+          quantita: m.quantita || 0,
         })
       }
     }
 
-    // ARCHIVIA INTERVENTI
     await supabase
       .from("interventi")
-      .update({ stato: "archiviato" })
-      .in("id", lista.map(i => i.id))
+      .update({ archiviato: true })
+      .in(
+        "id",
+        lista.map((i) => i.id)
+      )
 
     alert("✅ Fattura salvata")
 
@@ -131,60 +176,166 @@ export default function FatturePage() {
 
   return (
     <div style={{ padding: 20 }}>
-
       <h2>💰 Fatture</h2>
 
-      <button onClick={() => navigate("/storico-fatture")}>
-        📜 Vai allo Storico
-      </button>
+      <div style={{ marginBottom: 15 }}>
+        <button onClick={() => navigate("/storico-fatture")} style={topButton}>
+          📜 Vai allo Storico
+        </button>
 
-      {Object.keys(clientiMap).length === 0 && (
+        <button onClick={load} style={topButton}>
+          🔄 Aggiorna interventi
+        </button>
+      </div>
+
+      {loading && <p>Caricamento interventi...</p>}
+
+      {!loading && Object.keys(clientiMap).length === 0 && (
         <p>Nessun intervento da fatturare</p>
       )}
 
-      {Object.keys(clientiMap).map(cliente => {
-
+      {Object.keys(clientiMap).map((cliente) => {
         const lista = clientiMap[cliente]
+        const idsSelezionati = selezionati[cliente] || []
+        const listaSelezionata = lista.filter((i) =>
+          idsSelezionati.includes(i.id)
+        )
 
-        const totaleOre = lista.reduce((tot, i) =>
-          tot + (i.ore_operatori || []).reduce((t, o) => t + (o.ore || 0), 0)
-        , 0)
+        const totaleOre = listaSelezionata.reduce(
+          (tot, i) =>
+            tot +
+            (i.ore_operatori || []).reduce(
+              (t, o) => t + Number(o.ore || 0),
+              0
+            ),
+          0
+        )
 
-        const totaleMateriali = lista.reduce((tot, i) =>
-          tot + (i.materiali_bollettino || []).reduce((t, m) => t + (m.quantita || 0), 0)
-        , 0)
+        const totaleMateriali = listaSelezionata.reduce(
+          (tot, i) =>
+            tot +
+            (i.materiali_bollettino || []).reduce(
+              (t, m) => t + Number(m.quantita || 0),
+              0
+            ),
+          0
+        )
 
         return (
-          <div key={cliente} style={{
-            border: "1px solid #ccc",
-            marginTop: 10,
-            padding: 10,
-            borderRadius: 6
-          }}>
-
+          <div key={cliente} style={cardCliente}>
             <h3>{cliente}</h3>
 
-            <div>👷 Ore totali: {totaleOre}</div>
-            <div>📦 Materiali totali: {totaleMateriali}</div>
+            <div style={{ marginBottom: 10 }}>
+              <strong>Selezionati:</strong> {listaSelezionata.length} /{" "}
+              {lista.length}
+            </div>
+
+            <div>👷 Ore selezionate: {totaleOre}</div>
+            <div>📦 Materiali selezionati: {totaleMateriali}</div>
+
+            <div style={{ marginTop: 10, marginBottom: 10 }}>
+              <button
+                onClick={() => selezionaTuttiCliente(cliente)}
+                style={smallButton}
+              >
+                ✅ Seleziona tutti
+              </button>
+
+              <button
+                onClick={() => deselezionaTuttiCliente(cliente)}
+                style={smallButton}
+              >
+                ❌ Deseleziona
+              </button>
+            </div>
 
             <hr />
 
-            {lista.map(i => (
-              <div key={i.id}>
-                📅 {dayjs(i.data).format("DD/MM/YYYY")} - {i.descrizione}
-              </div>
-            ))}
+            {lista.map((i) => {
+              const checked = idsSelezionati.includes(i.id)
+
+              return (
+                <div key={i.id} style={rigaIntervento}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleIntervento(cliente, i.id)}
+                    style={{ width: 20, height: 20 }}
+                  />
+
+                  <div>
+                    <div>
+                      📅 {dayjs(i.data).format("DD/MM/YYYY")} -{" "}
+                      {i.descrizione}
+                    </div>
+
+                    <small>
+                      Ore:{" "}
+                      {(i.ore_operatori || []).reduce(
+                        (t, o) => t + Number(o.ore || 0),
+                        0
+                      )}{" "}
+                      | Materiali:{" "}
+                      {(i.materiali_bollettino || []).reduce(
+                        (t, m) => t + Number(m.quantita || 0),
+                        0
+                      )}
+                    </small>
+                  </div>
+                </div>
+              )
+            })}
 
             <br />
 
-            <button onClick={() => creaFattura(cliente)}>
-              💾 Crea Fattura
+            <button onClick={() => creaFattura(cliente)} style={createButton}>
+              💾 Crea fattura con selezionati
             </button>
-
           </div>
         )
       })}
-
     </div>
   )
+}
+
+const topButton = {
+  marginRight: 10,
+  padding: "8px 12px",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  cursor: "pointer",
+}
+
+const cardCliente = {
+  border: "1px solid #ccc",
+  marginTop: 15,
+  padding: 15,
+  borderRadius: 8,
+  background: "#fff",
+}
+
+const rigaIntervento = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: 10,
+  padding: "8px 0",
+  borderBottom: "1px solid #eee",
+}
+
+const smallButton = {
+  marginRight: 8,
+  padding: "7px 10px",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  cursor: "pointer",
+}
+
+const createButton = {
+  background: "#198754",
+  color: "white",
+  border: "none",
+  padding: "10px 14px",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
 }

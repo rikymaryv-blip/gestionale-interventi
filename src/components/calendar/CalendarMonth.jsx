@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
 import "dayjs/locale/it"
@@ -13,10 +13,9 @@ export default function CalendarMonth() {
   const [interventi, setInterventi] = useState([])
   const [operatori, setOperatori] = useState([])
   const [operatoreFiltro, setOperatoreFiltro] = useState("")
-  const [giornoSelezionato, setGiornoSelezionato] = useState(null)
-
-  const paginaRef = useRef(null)
-  const interventiRef = useRef(null)
+  const [giornoSelezionato, setGiornoSelezionato] = useState(
+    dayjs().format("YYYY-MM-DD")
+  )
 
   useEffect(() => {
     caricaOperatori()
@@ -56,7 +55,8 @@ export default function CalendarMonth() {
         ore_operatori(
           ore,
           operatori(id, nome)
-        )
+        ),
+        materiali_bollettino(id)
       `)
       .gte("data", inizio)
       .lte("data", fine)
@@ -131,236 +131,307 @@ export default function CalendarMonth() {
     return "#ffc9c9"
   }
 
-  function vaiAgliInterventi() {
-    setTimeout(() => {
-      if (!paginaRef.current || !interventiRef.current) return
-
-      paginaRef.current.scrollTo({
-        top: interventiRef.current.offsetTop - 10,
-        behavior: "smooth",
-      })
-    }, 300)
-  }
-
   function selezionaGiorno(giorno) {
     if (!giorno) return
-
     setGiornoSelezionato(giorno.format("YYYY-MM-DD"))
-    vaiAgliInterventi()
   }
 
-  function nuovoInterventoDalCalendario() {
-    if (!giornoSelezionato) return
-
-    navigate(`/interventi?data=${giornoSelezionato}`)
+  function nuovoInterventoDalCalendario(data = giornoSelezionato) {
+    if (!data) return
+    navigate(`/interventi?data=${data}`)
   }
 
   function modificaIntervento(id) {
     navigate(`/interventi?edit_id=${id}`)
   }
 
+  function vaiAlGiornoDopo() {
+    if (!giornoSelezionato) return
+
+    const giornoDopo = dayjs(giornoSelezionato).add(1, "day")
+    setGiornoSelezionato(giornoDopo.format("YYYY-MM-DD"))
+
+    if (!giornoDopo.isSame(mese, "month")) {
+      setMese(giornoDopo)
+    }
+  }
+
+  function vaiAlGiornoPrima() {
+    if (!giornoSelezionato) return
+
+    const giornoPrima = dayjs(giornoSelezionato).subtract(1, "day")
+    setGiornoSelezionato(giornoPrima.format("YYYY-MM-DD"))
+
+    if (!giornoPrima.isSame(mese, "month")) {
+      setMese(giornoPrima)
+    }
+  }
+
   const interventiSelezionati = giornoSelezionato
     ? interventiDelGiorno(dayjs(giornoSelezionato))
     : []
 
-  const clientiGiornata = [
-    ...new Set(
-      interventiSelezionati.map(
-        (intervento) => intervento.clienti?.nome || "Cliente non indicato"
-      )
-    ),
-  ]
+  const totaleOreGiorno = giornoSelezionato
+    ? oreDelGiorno(dayjs(giornoSelezionato))
+    : 0
 
   return (
-    <div ref={paginaRef} style={page}>
-      <h1>📅 Calendario interventi</h1>
+    <div style={page}>
+      <h1 style={title}>📅 Calendario interventi</h1>
 
-      <div style={topBar}>
-        <button
-          style={button}
-          onClick={() => setMese(mese.subtract(1, "month"))}
-        >
-          ◀
-        </button>
-
-        <h2 style={monthTitle}>{mese.format("MMMM YYYY")}</h2>
-
-        <button
-          style={button}
-          onClick={() => setMese(mese.add(1, "month"))}
-        >
-          ▶
-        </button>
-      </div>
-
-      <select
-        style={select}
-        value={operatoreFiltro}
-        onChange={(e) => setOperatoreFiltro(e.target.value)}
-      >
-        <option value="">Tutti operatori</option>
-
-        {operatori.map((op) => (
-          <option key={op.id} value={op.id}>
-            {op.nome}
-          </option>
-        ))}
-      </select>
-
-      <div style={weekGrid}>
-        {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((g) => (
-          <div key={g} style={weekDay}>
-            {g}
-          </div>
-        ))}
-      </div>
-
-      <div style={calendarGrid}>
-        {giorniCalendario.map((giorno, index) => {
-          const ore = giorno ? oreDelGiorno(giorno) : 0
-          const lista = giorno ? interventiDelGiorno(giorno) : []
-          const selezionato =
-            giornoSelezionato === giorno?.format("YYYY-MM-DD")
-
-          return (
-            <div
-              key={index}
-              onClick={() => selezionaGiorno(giorno)}
-              style={{
-                ...dayCell,
-                background: coloreGiorno(giorno),
-                cursor: giorno ? "pointer" : "default",
-                border: selezionato
-                  ? "3px solid #1976d2"
-                  : "1px solid #ccc",
-              }}
-            >
-              {giorno && (
-                <>
-                  <div style={dayNumber}>{giorno.date()}</div>
-                  <div>{ore > 0 ? `${ore}h` : "-"}</div>
-                  {lista.length > 0 && <div>{lista.length} int.</div>}
-                </>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {giornoSelezionato && (
-        <div ref={interventiRef} style={detailsBox}>
-          <h2>
-            Interventi del {dayjs(giornoSelezionato).format("DD/MM/YYYY")}
-          </h2>
-
-          <div style={{ marginBottom: 15 }}>
+      <div style={layout}>
+        <div style={calendarPanel}>
+          <div style={topBar}>
             <button
-              onClick={nuovoInterventoDalCalendario}
-              style={{
-                background: "#198754",
-                color: "white",
-                border: "none",
-                padding: "10px 14px",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
+              style={button}
+              onClick={() => setMese(mese.subtract(1, "month"))}
             >
-              ➕ Nuovo intervento
+              ◀
+            </button>
+
+            <h2 style={monthTitle}>{mese.format("MMMM YYYY")}</h2>
+
+            <button
+              style={button}
+              onClick={() => setMese(mese.add(1, "month"))}
+            >
+              ▶
             </button>
           </div>
 
-          {operatoreFiltro && clientiGiornata.length > 0 && (
-            <div style={clientiGiornoBox}>
-              <strong>Clienti della giornata:</strong>
-              <ul>
-                {clientiGiornata.map((cliente, index) => (
-                  <li key={index}>{cliente}</li>
-                ))}
-              </ul>
+          <select
+            style={select}
+            value={operatoreFiltro}
+            onChange={(e) => setOperatoreFiltro(e.target.value)}
+          >
+            <option value="">Tutti operatori</option>
+
+            {operatori.map((op) => (
+              <option key={op.id} value={op.id}>
+                {op.nome}
+              </option>
+            ))}
+          </select>
+
+          <div style={weekGrid}>
+            {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((g) => (
+              <div key={g} style={weekDay}>
+                {g}
+              </div>
+            ))}
+          </div>
+
+          <div style={calendarGrid}>
+            {giorniCalendario.map((giorno, index) => {
+              const ore = giorno ? oreDelGiorno(giorno) : 0
+              const lista = giorno ? interventiDelGiorno(giorno) : []
+              const selezionato =
+                giornoSelezionato === giorno?.format("YYYY-MM-DD")
+
+              return (
+                <div
+                  key={index}
+                  onClick={() => selezionaGiorno(giorno)}
+                  onDoubleClick={() =>
+                    giorno &&
+                    nuovoInterventoDalCalendario(giorno.format("YYYY-MM-DD"))
+                  }
+                  style={{
+                    ...dayCell,
+                    background: coloreGiorno(giorno),
+                    cursor: giorno ? "pointer" : "default",
+                    border: selezionato
+                      ? "3px solid #1976d2"
+                      : "1px solid #ccc",
+                  }}
+                >
+                  {giorno && (
+                    <>
+                      <div style={dayNumber}>{giorno.date()}</div>
+                      <div style={dayInfo}>{ore > 0 ? `${ore}h` : "-"}</div>
+                      {lista.length > 0 && (
+                        <div style={dayInfo}>{lista.length} int.</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div style={detailsBox}>
+          <div style={detailsHeader}>
+            <div>
+              <h2 style={{ margin: 0 }}>
+                Interventi del{" "}
+                {dayjs(giornoSelezionato).format("DD/MM/YYYY")}
+              </h2>
+              <div style={summaryLine}>
+                Interventi: {interventiSelezionati.length} | Ore:{" "}
+                {totaleOreGiorno}
+              </div>
             </div>
-          )}
+
+            <div style={headerButtons}>
+              <button onClick={vaiAlGiornoPrima} style={prevDayButton}>
+                ⬅️ Giorno prima
+              </button>
+
+              <button
+                onClick={() => nuovoInterventoDalCalendario()}
+                style={newButton}
+              >
+                ➕ Nuovo intervento
+              </button>
+
+              <button onClick={vaiAlGiornoDopo} style={nextDayButton}>
+                ➡️ Giorno dopo
+              </button>
+            </div>
+          </div>
 
           {interventiSelezionati.length === 0 ? (
-            <p>Nessun intervento in questo giorno.</p>
+            <div style={emptyBox}>
+              Nessun intervento in questo giorno.
+              <br />
+              <button
+                onClick={() => nuovoInterventoDalCalendario()}
+                style={{ ...newButton, marginTop: 15 }}
+              >
+                ➕ Crea intervento in questa data
+              </button>
+            </div>
           ) : (
-            interventiSelezionati.map((intervento) => (
-              <div key={intervento.id} style={card}>
-                <h3>{intervento.clienti?.nome || "Cliente non indicato"}</h3>
+            interventiSelezionati.map((intervento) => {
+              const haMateriale =
+                intervento.materiali_bollettino?.length > 0
 
-                <p>
-                  <strong>Cantiere:</strong>{" "}
-                  {intervento.cantieri?.nome || "Non indicato"}
-                </p>
+              return (
+                <div key={intervento.id} style={card}>
+                  <div style={cardContent}>
+                    <div style={cardLeft}>
+                      <h3 style={cardTitle}>
+                        {intervento.clienti?.nome || "Cliente non indicato"}
+                      </h3>
 
-                <p>
-                  <strong>Descrizione:</strong>{" "}
-                  {intervento.descrizione || "Nessuna descrizione"}
-                </p>
+                      <p>
+                        <strong>📅 Data:</strong>{" "}
+                        {dayjs(intervento.data).format("DD/MM/YYYY")}
+                      </p>
 
-                <strong>Operatori:</strong>
+                      <p>
+                        <strong>🏗️ Cantiere:</strong>{" "}
+                        {intervento.cantieri?.nome || "Non indicato"}
+                      </p>
 
-                {intervento.ore_operatori?.length > 0 ? (
-                  <ul>
-                    {intervento.ore_operatori
-                      .filter((riga) =>
-                        operatoreFiltro
-                          ? String(riga.operatori?.id) ===
-                            String(operatoreFiltro)
-                          : true
-                      )
-                      .map((riga, i) => (
-                        <li key={i}>
-                          {riga.operatori?.nome || "Operatore"} - {riga.ore} ore
-                        </li>
-                      ))}
-                  </ul>
-                ) : (
-                  <p>Nessun operatore inserito.</p>
-                )}
+                      <p>
+                        <strong>📦 Materiale:</strong>{" "}
+                        {haMateriale
+                          ? `SI (${intervento.materiali_bollettino.length} righe)`
+                          : "NO"}
+                      </p>
 
-                <div style={{ marginTop: "12px" }}>
-                  <button
-                    onClick={() => modificaIntervento(intervento.id)}
-                    style={modifyButton}
-                  >
-                    ✏️ Modifica intervento
-                  </button>
+                      <p>
+                        <strong>📝 Descrizione:</strong>{" "}
+                        {intervento.descrizione || "Nessuna descrizione"}
+                      </p>
+
+                      <strong>👷 Operatori:</strong>
+
+                      {intervento.ore_operatori?.length > 0 ? (
+                        <ul>
+                          {intervento.ore_operatori
+                            .filter((riga) =>
+                              operatoreFiltro
+                                ? String(riga.operatori?.id) ===
+                                  String(operatoreFiltro)
+                                : true
+                            )
+                            .map((riga, i) => (
+                              <li key={i}>
+                                {riga.operatori?.nome || "Operatore"} -{" "}
+                                {riga.ore} ore
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <p>Nessun operatore inserito.</p>
+                      )}
+                    </div>
+
+                    <div style={cardActions}>
+                      <button
+                        onClick={() => modificaIntervento(intervento.id)}
+                        style={modifyButton}
+                      >
+                        ✏️ Modifica
+                      </button>
+
+                      <button
+                        onClick={() => nuovoInterventoDalCalendario()}
+                        style={newButton}
+                      >
+                        ➕ Nuovo
+                      </button>
+
+                      <button onClick={vaiAlGiornoDopo} style={nextDayButton}>
+                        ➡️ Giorno dopo
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
-
-          <div style={{ height: "350px" }}></div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
 
 const page = {
-  height: "calc(100vh - 90px)",
-  overflowY: "auto",
-  padding: "20px",
-  maxWidth: "1200px",
+  padding: "12px",
+  maxWidth: "1600px",
   margin: "0 auto",
   boxSizing: "border-box",
+}
+
+const title = {
+  margin: "0 0 10px 0",
+}
+
+const layout = {
+  display: "grid",
+  gridTemplateColumns: "430px 1fr",
+  gap: "18px",
+  alignItems: "start",
+}
+
+const calendarPanel = {
+  position: "sticky",
+  top: "10px",
+  background: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: "12px",
+  padding: "12px",
 }
 
 const topBar = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: "15px",
+  marginBottom: "10px",
 }
 
 const monthTitle = {
   textTransform: "capitalize",
   margin: 0,
+  fontSize: "22px",
 }
 
 const button = {
-  padding: "10px 14px",
+  padding: "8px 12px",
   borderRadius: "8px",
   border: "1px solid #ccc",
   background: "#f5f5f5",
@@ -370,60 +441,86 @@ const button = {
 
 const select = {
   width: "100%",
-  padding: "12px",
-  borderRadius: "0",
+  padding: "10px",
+  borderRadius: "8px",
   border: "1px solid #ccc",
-  marginBottom: "25px",
-  fontSize: "16px",
+  marginBottom: "12px",
+  fontSize: "15px",
 }
 
 const weekGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(7, 1fr)",
-  gap: "6px",
-  marginBottom: "6px",
+  gap: "5px",
+  marginBottom: "5px",
 }
 
 const weekDay = {
   textAlign: "center",
   fontWeight: "bold",
-  padding: "8px",
+  padding: "5px",
+  fontSize: "13px",
 }
 
 const calendarGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(7, 1fr)",
-  gap: "6px",
+  gap: "5px",
 }
 
 const dayCell = {
-  minHeight: "100px",
+  minHeight: "58px",
   borderRadius: "6px",
-  padding: "8px",
+  padding: "5px",
   boxSizing: "border-box",
   textAlign: "center",
   fontWeight: "bold",
 }
 
 const dayNumber = {
-  fontSize: "18px",
-  marginBottom: "8px",
+  fontSize: "16px",
+  marginBottom: "3px",
+}
+
+const dayInfo = {
+  fontSize: "12px",
 }
 
 const detailsBox = {
-  marginTop: "35px",
-  padding: "20px",
+  minHeight: "calc(100vh - 100px)",
+  padding: "18px",
   borderRadius: "12px",
   border: "3px solid #1976d2",
   background: "#fafafa",
 }
 
-const clientiGiornoBox = {
-  background: "#e3f2fd",
-  border: "1px solid #1976d2",
-  borderRadius: "8px",
-  padding: "12px",
+const detailsHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  alignItems: "flex-start",
   marginBottom: "15px",
+  flexWrap: "wrap",
+}
+
+const summaryLine = {
+  marginTop: "5px",
+  color: "#555",
+  fontWeight: "bold",
+}
+
+const headerButtons = {
+  display: "flex",
+  gap: "8px",
+  flexWrap: "wrap",
+}
+
+const emptyBox = {
+  background: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: "10px",
+  padding: "20px",
+  fontWeight: "bold",
 }
 
 const card = {
@@ -432,6 +529,57 @@ const card = {
   borderRadius: "10px",
   padding: "15px",
   marginBottom: "12px",
+}
+
+const cardContent = {
+  display: "grid",
+  gridTemplateColumns: "1fr 170px",
+  gap: "15px",
+}
+
+const cardLeft = {
+  minWidth: 0,
+}
+
+const cardTitle = {
+  marginTop: 0,
+}
+
+const cardActions = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+  alignItems: "stretch",
+}
+
+const newButton = {
+  background: "#198754",
+  color: "white",
+  border: "none",
+  padding: "10px 14px",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+}
+
+const nextDayButton = {
+  background: "#6f42c1",
+  color: "white",
+  border: "none",
+  padding: "10px 14px",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+}
+
+const prevDayButton = {
+  background: "#0d6efd",
+  color: "white",
+  border: "none",
+  padding: "10px 14px",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
 }
 
 const modifyButton = {

@@ -60,7 +60,6 @@ export default function CalendarMonth() {
       `)
       .gte("data", inizio)
       .lte("data", fine)
-      .or("archiviato.is.null,archiviato.eq.false")
       .order("data", { ascending: true })
 
     if (error) {
@@ -268,7 +267,7 @@ export default function CalendarMonth() {
                 {dayjs(giornoSelezionato).format("DD/MM/YYYY")}
               </h2>
               <div style={summaryLine}>
-                Interventi: {interventiSelezionati.length} | Ore:{" "}
+                Interventi: {interventiSelezionati.length} | Ore: {" "}
                 {totaleOreGiorno}
               </div>
             </div>
@@ -276,13 +275,6 @@ export default function CalendarMonth() {
             <div style={headerButtons}>
               <button onClick={vaiAlGiornoPrima} style={prevDayButton}>
                 ⬅️ Giorno prima
-              </button>
-
-              <button
-                onClick={() => nuovoInterventoDalCalendario()}
-                style={newButton}
-              >
-                ➕ Nuovo intervento
               </button>
 
               <button onClick={vaiAlGiornoDopo} style={nextDayButton}>
@@ -314,6 +306,10 @@ export default function CalendarMonth() {
                       <h3 style={cardTitle}>
                         {intervento.clienti?.nome || "Cliente non indicato"}
                       </h3>
+
+                      {intervento.archiviato && (
+                        <div style={archivedBadge}>📦 Archiviato / fatturato</div>
+                      )}
 
                       <p>
                         <strong>📅 Data:</strong>{" "}
@@ -350,7 +346,7 @@ export default function CalendarMonth() {
                             )
                             .map((riga, i) => (
                               <li key={i}>
-                                {riga.operatori?.nome || "Operatore"} -{" "}
+                                {riga.operatori?.nome || "Operatore"} - {" "}
                                 {riga.ore} ore
                               </li>
                             ))}
@@ -550,6 +546,17 @@ const cardActions = {
   flexDirection: "column",
   gap: "10px",
   alignItems: "stretch",
+}
+
+const archivedBadge = {
+  display: "inline-block",
+  background: "#fff3cd",
+  color: "#856404",
+  border: "1px solid #ffeeba",
+  borderRadius: "8px",
+  padding: "5px 8px",
+  marginBottom: "8px",
+  fontWeight: "bold",
 }
 
 const newButton = {

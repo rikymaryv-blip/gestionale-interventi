@@ -37,12 +37,14 @@ export default function OreOperatoriExcelPage() {
   function getDateRange(meseSelezionato) {
     const [anno, meseNum] = meseSelezionato.split("-").map(Number)
 
-    const inizio = new Date(anno, meseNum - 1, 1)
-    const fine = new Date(anno, meseNum, 1)
+    const mm = String(meseNum).padStart(2, "0")
+    const meseDopo = meseNum === 12 ? 1 : meseNum + 1
+    const annoDopo = meseNum === 12 ? anno + 1 : anno
+    const mmDopo = String(meseDopo).padStart(2, "0")
 
     return {
-      dataDa: inizio.toISOString().slice(0, 10),
-      dataA: fine.toISOString().slice(0, 10)
+      dataDa: `${anno}-${mm}-01`,
+      dataA: `${annoDopo}-${mmDopo}-01`
     }
   }
 
@@ -230,8 +232,8 @@ export default function OreOperatoriExcelPage() {
 
     ws.columns = [
       { key: "data", width: 14 },
-      { key: "descrizione", width: 70 },
-      { key: "operatore", width: 24 },
+      { key: "cliente", width: 30 },
+      { key: "descrizione", width: 55 },
       { key: "ore", width: 10 }
     ]
 
@@ -263,7 +265,7 @@ export default function OreOperatoriExcelPage() {
     ws.getCell("B3").font = { bold: true }
     ws.getCell("B4").font = { bold: true }
 
-    ws.getRow(6).values = ["Data", "Descrizione", "Operatore", "Ore"]
+    ws.getRow(6).values = ["Data", "Cliente", "Descrizione", "Ore"]
     ws.getRow(6).height = 24
 
     for (let c = 1; c <= 4; c++) {
@@ -281,8 +283,8 @@ export default function OreOperatoriExcelPage() {
         row.height = 30
 
         row.getCell(1).value = r.data_it
-        row.getCell(2).value = r.descrizione || "-"
-        row.getCell(3).value = r.operatore || "-"
+        row.getCell(2).value = r.cliente || "-"
+        row.getCell(3).value = r.descrizione || "-"
         row.getCell(4).value = r.ore
 
         stileCellaNormale(row.getCell(1), "center")

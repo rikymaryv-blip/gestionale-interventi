@@ -4,7 +4,6 @@ import dayjs from "dayjs"
 import { useNavigate, useSearchParams } from "react-router-dom"
 
 export default function InterventiPage() {
-
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const editIdDaUrl = searchParams.get("edit_id")
@@ -40,7 +39,7 @@ export default function InterventiPage() {
   const [altroMat, setAltroMat] = useState({
     codice: "",
     descrizione: "",
-    quantita: 1
+    quantita: 1,
   })
 
   const formVuoto = {
@@ -50,7 +49,7 @@ export default function InterventiPage() {
     data: dataDaUrl || dayjs().format("YYYY-MM-DD"),
     descrizione: "",
     operatori: [],
-    materiali: []
+    materiali: [],
   }
 
   const [form, setForm] = useState(formVuoto)
@@ -159,28 +158,11 @@ export default function InterventiPage() {
 
   function clientiFiltrati() {
     const testo = form.cliente_nome.trim().toLowerCase()
-
     if (!testo) return []
 
     return clienti
-      .filter(c => c.nome.toLowerCase().includes(testo))
+      .filter((c) => c.nome.toLowerCase().includes(testo))
       .slice(0, 8)
-  }
-
-  function vaiAllaData() {
-    setTimeout(() => {
-      dataInputRef.current?.focus()
-    }, 100)
-  }
-
-  function vaiAlCantiere() {
-    setTimeout(() => {
-      if (cantiereSelectRef.current && cantieri.length > 0) {
-        cantiereSelectRef.current.focus()
-      } else {
-        dataInputRef.current?.focus()
-      }
-    }, 150)
   }
 
   function gestisciTastieraCliente(e) {
@@ -190,7 +172,7 @@ export default function InterventiPage() {
       e.preventDefault()
       if (!lista.length) return
       setShowClienti(true)
-      setClienteEvidenziato(prev =>
+      setClienteEvidenziato((prev) =>
         prev >= lista.length - 1 ? 0 : prev + 1
       )
       return
@@ -200,7 +182,7 @@ export default function InterventiPage() {
       e.preventDefault()
       if (!lista.length) return
       setShowClienti(true)
-      setClienteEvidenziato(prev =>
+      setClienteEvidenziato((prev) =>
         prev <= 0 ? lista.length - 1 : prev - 1
       )
       return
@@ -254,9 +236,9 @@ export default function InterventiPage() {
     }
 
     if (nuovaData) {
-      setForm(prev => ({
+      setForm((prev) => ({
         ...prev,
-        data: nuovaData.format("YYYY-MM-DD")
+        data: nuovaData.format("YYYY-MM-DD"),
       }))
     }
   }
@@ -270,7 +252,7 @@ export default function InterventiPage() {
   }
 
   function vaiAgliOperatori() {
-    const primoVuoto = form.operatori.findIndex(op => !op.operatore_id)
+    const primoVuoto = form.operatori.findIndex((op) => !op.operatore_id)
 
     if (primoVuoto >= 0) {
       setTimeout(() => {
@@ -281,24 +263,24 @@ export default function InterventiPage() {
 
     const nuovoIndex = form.operatori.length
 
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      operatori: [...prev.operatori, { operatore_id: "", ore: "" }]
+      operatori: [...prev.operatori, { operatore_id: "", ore: "" }],
     }))
 
-    setOperatoriRicerca(prev => {
+    setOperatoriRicerca((prev) => {
       const nuovo = [...prev]
       nuovo[nuovoIndex] = ""
       return nuovo
     })
 
-    setShowOperatori(prev => {
+    setShowOperatori((prev) => {
       const nuovo = [...prev]
       nuovo[nuovoIndex] = false
       return nuovo
     })
 
-    setOperatoreEvidenziato(prev => {
+    setOperatoreEvidenziato((prev) => {
       const nuovo = [...prev]
       nuovo[nuovoIndex] = 0
       return nuovo
@@ -311,71 +293,68 @@ export default function InterventiPage() {
   }
 
   function nomeOperatoreDaId(id) {
-    return operatoriDB.find(op => String(op.id) === String(id))?.nome || ""
+    return operatoriDB.find((op) => String(op.id) === String(id))?.nome || ""
   }
 
   function operatoriFiltrati(index) {
     const testo = (operatoriRicerca[index] || "").trim().toLowerCase()
-
     if (!testo) return []
 
-    const inizioUguale = operatoriDB.filter(op =>
+    const inizioUguale = operatoriDB.filter((op) =>
       op.nome.toLowerCase().startsWith(testo)
     )
 
-    const contieneTesto = operatoriDB.filter(op =>
-      !op.nome.toLowerCase().startsWith(testo) &&
-      op.nome.toLowerCase().includes(testo)
+    const contieneTesto = operatoriDB.filter(
+      (op) =>
+        !op.nome.toLowerCase().startsWith(testo) &&
+        op.nome.toLowerCase().includes(testo)
     )
 
-    return [
-      ...inizioUguale,
-      ...contieneTesto
-    ].slice(0, 8)
+    return [...inizioUguale, ...contieneTesto].slice(0, 8)
   }
 
   function aggiornaRicercaOperatore(index, valore) {
-    setOperatoriRicerca(prev => {
+    setOperatoriRicerca((prev) => {
       const nuovo = [...prev]
       nuovo[index] = valore
       return nuovo
     })
 
-    setShowOperatori(prev => {
+    setShowOperatori((prev) => {
       const nuovo = [...prev]
       nuovo[index] = true
       return nuovo
     })
 
-    setOperatoreEvidenziato(prev => {
+    setOperatoreEvidenziato((prev) => {
       const nuovo = [...prev]
       nuovo[index] = 0
       return nuovo
     })
 
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       operatori: prev.operatori.map((op, i) =>
         i === index ? { ...op, operatore_id: "" } : op
-      )
+      ),
     }))
   }
 
   function selezionaOperatore(op, index, passaAlleOre = false) {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       operatori: prev.operatori.map((riga, i) =>
         i === index ? { ...riga, operatore_id: op.id } : riga
-      )
+      ),
     }))
 
-    setOperatoriRicerca(prev => {
+    setOperatoriRicerca((prev) => {
       const nuovo = [...prev]
       nuovo[index] = op.nome
       return nuovo
     })
 
-    setShowOperatori(prev => {
+    setShowOperatori((prev) => {
       const nuovo = [...prev]
       nuovo[index] = false
       return nuovo
@@ -396,34 +375,40 @@ export default function InterventiPage() {
     if (e.key === "ArrowDown") {
       e.preventDefault()
       if (!lista.length) return
-      setShowOperatori(prev => {
+
+      setShowOperatori((prev) => {
         const nuovo = [...prev]
         nuovo[index] = true
         return nuovo
       })
-      setOperatoreEvidenziato(prev => {
+
+      setOperatoreEvidenziato((prev) => {
         const nuovo = [...prev]
         const attuale = nuovo[index] || 0
         nuovo[index] = attuale >= lista.length - 1 ? 0 : attuale + 1
         return nuovo
       })
+
       return
     }
 
     if (e.key === "ArrowUp") {
       e.preventDefault()
       if (!lista.length) return
-      setShowOperatori(prev => {
+
+      setShowOperatori((prev) => {
         const nuovo = [...prev]
         nuovo[index] = true
         return nuovo
       })
-      setOperatoreEvidenziato(prev => {
+
+      setOperatoreEvidenziato((prev) => {
         const nuovo = [...prev]
         const attuale = nuovo[index] || 0
         nuovo[index] = attuale <= 0 ? lista.length - 1 : attuale - 1
         return nuovo
       })
+
       return
     }
 
@@ -436,7 +421,11 @@ export default function InterventiPage() {
       }
 
       if (lista.length > 0 && !form.operatori[index]?.operatore_id) {
-        selezionaOperatore(lista[operatoreEvidenziato[index] || 0] || lista[0], index, true)
+        selezionaOperatore(
+          lista[operatoreEvidenziato[index] || 0] || lista[0],
+          index,
+          true
+        )
         return
       }
 
@@ -462,11 +451,11 @@ export default function InterventiPage() {
   }
 
   async function selezionaCliente(c, passaAlCampoDopo = false) {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       cliente_id: c.id,
       cliente_nome: c.nome,
-      cantiere_id: ""
+      cantiere_id: "",
     }))
 
     setShowClienti(false)
@@ -496,52 +485,21 @@ export default function InterventiPage() {
     }
   }
 
-  function aggiungiMateriale(item) {
-    setForm(prev => {
-      const codice = item.codice || ""
-      const descrizione = item.descrizione || ""
-
-      const esistente = prev.materiali.find(m =>
-        (codice && m.codice === codice) ||
-        (!codice && descrizione && m.descrizione === descrizione)
-      )
-
-      if (esistente) {
-        alert("Materiale già inserito")
-        return prev
-      }
-
-      return {
-        ...prev,
-        materiali: [
-          ...prev.materiali,
-          {
-            codice,
-            descrizione,
-            quantita: 1
-          }
-        ]
-      }
-    })
-  }
-
   function eliminaMateriale(index) {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      materiali: prev.materiali.filter((_, i) => i !== index)
+      materiali: prev.materiali.filter((_, i) => i !== index),
     }))
   }
 
   function aggiornaQuantitaMateriale(index, valore) {
     const quantita = Number(valore)
 
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       materiali: prev.materiali.map((m, i) =>
-        i === index
-          ? { ...m, quantita: quantita > 0 ? quantita : 1 }
-          : m
-      )
+        i === index ? { ...m, quantita: quantita > 0 ? quantita : 1 } : m
+      ),
     }))
   }
 
@@ -590,9 +548,10 @@ export default function InterventiPage() {
       return
     }
 
-    const esisteGia = form.materiali.some(m =>
-      (codice && m.codice === codice) ||
-      (!codice && descrizione && m.descrizione === descrizione)
+    const esisteGia = form.materiali.some(
+      (m) =>
+        (codice && m.codice === codice) ||
+        (!codice && descrizione && m.descrizione === descrizione)
     )
 
     if (esisteGia) {
@@ -600,22 +559,22 @@ export default function InterventiPage() {
       return
     }
 
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       materiali: [
         ...prev.materiali,
         {
           codice,
           descrizione,
-          quantita: quantita > 0 ? quantita : 1
-        }
-      ]
+          quantita: quantita > 0 ? quantita : 1,
+        },
+      ],
     }))
 
     setAltroMat({
       codice: "",
       descrizione: "",
-      quantita: 1
+      quantita: 1,
     })
 
     setShowAltroMat(false)
@@ -624,24 +583,24 @@ export default function InterventiPage() {
   function aggiungiOperatore(focusNuovo = false) {
     const nuovoIndex = form.operatori.length
 
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      operatori: [...prev.operatori, { operatore_id: "", ore: "" }]
+      operatori: [...prev.operatori, { operatore_id: "", ore: "" }],
     }))
 
-    setOperatoriRicerca(prev => {
+    setOperatoriRicerca((prev) => {
       const nuovo = [...prev]
       nuovo[nuovoIndex] = ""
       return nuovo
     })
 
-    setShowOperatori(prev => {
+    setShowOperatori((prev) => {
       const nuovo = [...prev]
       nuovo[nuovoIndex] = false
       return nuovo
     })
 
-    setOperatoreEvidenziato(prev => {
+    setOperatoreEvidenziato((prev) => {
       const nuovo = [...prev]
       nuovo[nuovoIndex] = 0
       return nuovo
@@ -655,28 +614,30 @@ export default function InterventiPage() {
   }
 
   function aggiornaOperatore(i, campo, valore) {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       operatori: prev.operatori.map((op, index) =>
         index === i ? { ...op, [campo]: valore } : op
-      )
+      ),
     }))
   }
 
   function eliminaOperatore(i) {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      operatori: prev.operatori.filter((_, idx) => idx !== i)
+      operatori: prev.operatori.filter((_, idx) => idx !== i),
     }))
 
-    setOperatoriRicerca(prev => prev.filter((_, idx) => idx !== i))
-    setShowOperatori(prev => prev.filter((_, idx) => idx !== i))
-    setOperatoreEvidenziato(prev => prev.filter((_, idx) => idx !== i))
+    setOperatoriRicerca((prev) => prev.filter((_, idx) => idx !== i))
+    setShowOperatori((prev) => prev.filter((_, idx) => idx !== i))
+    setOperatoreEvidenziato((prev) => prev.filter((_, idx) => idx !== i))
   }
 
   function nuovoIntervento() {
     if (editingId) {
-      const conferma = confirm("Vuoi uscire da questo intervento e crearne uno nuovo?")
+      const conferma = confirm(
+        "Vuoi uscire da questo intervento e crearne uno nuovo?"
+      )
       if (!conferma) return
     }
 
@@ -689,7 +650,7 @@ export default function InterventiPage() {
       data: dataDaUrl || dayjs().format("YYYY-MM-DD"),
       descrizione: "",
       operatori: [],
-      materiali: []
+      materiali: [],
     })
     setCantieri([])
     setOperatoriRicerca([])
@@ -699,9 +660,10 @@ export default function InterventiPage() {
     setAltroMat({
       codice: "",
       descrizione: "",
-      quantita: 1
+      quantita: 1,
     })
     setShowAltroMat(false)
+
     if (dataDaUrl) {
       navigate(`/interventi?data=${dataDaUrl}`)
     } else {
@@ -722,7 +684,10 @@ export default function InterventiPage() {
 
     const { data: ops, error: opsError } = await supabase
       .from("ore_operatori")
-      .select("*")
+      .select(`
+        *,
+        operatori(nome)
+      `)
       .eq("intervento_id", i.id)
 
     if (opsError) {
@@ -743,9 +708,9 @@ export default function InterventiPage() {
       return
     }
 
-    const operatoriCaricati = (ops || []).map(o => ({
+    const operatoriCaricati = (ops || []).map((o) => ({
       operatore_id: o.operatore_id,
-      ore: o.ore
+      ore: o.ore,
     }))
 
     setForm({
@@ -755,22 +720,24 @@ export default function InterventiPage() {
       data: i.data || dayjs().format("YYYY-MM-DD"),
       descrizione: i.descrizione || "",
       operatori: operatoriCaricati,
-      materiali: (mats || []).map(m => ({
+      materiali: (mats || []).map((m) => ({
         id: m.id,
         codice: m.codice || "",
         descrizione: m.descrizione || "",
-        quantita: m.codice === "BOLLA" ? 0 : (m.quantita || 1)
-      }))
+        quantita: m.codice === "BOLLA" ? 0 : m.quantita || 1,
+      })),
     })
 
-    setOperatoriRicerca(operatoriCaricati.map(o => nomeOperatoreDaId(o.operatore_id)))
+    setOperatoriRicerca(
+      (ops || []).map((o) => o.operatori?.nome || nomeOperatoreDaId(o.operatore_id))
+    )
     setShowOperatori(operatoriCaricati.map(() => false))
     setOperatoreEvidenziato(operatoriCaricati.map(() => 0))
 
     setAltroMat({
       codice: "",
       descrizione: "",
-      quantita: 1
+      quantita: 1,
     })
 
     setShowAltroMat(false)
@@ -796,7 +763,6 @@ export default function InterventiPage() {
 
   async function archiviaIntervento(i) {
     if (!i?.id) return
-
     if (!confirm("Archiviare questo intervento?")) return
 
     const { error } = await supabase
@@ -811,17 +777,7 @@ export default function InterventiPage() {
     }
 
     if (editingId === i.id) {
-      setEditingId(null)
-      setForm({
-        cliente_id: "",
-        cliente_nome: "",
-        cantiere_id: "",
-        data: dataDaUrl || dayjs().format("YYYY-MM-DD"),
-        descrizione: "",
-        operatori: [],
-        materiali: []
-      })
-      setCantieri([])
+      nuovoIntervento()
     }
 
     caricaInterventi()
@@ -829,57 +785,22 @@ export default function InterventiPage() {
 
   async function eliminaIntervento(i) {
     if (!i?.id) return
-
     if (!confirm("Eliminare intervento?")) return
 
-    const conferma2 = confirm("Sei sicuro? Verranno eliminate anche ore operatori e materiali.")
+    const conferma2 = confirm(
+      "Sei sicuro? Verranno eliminate anche ore operatori e materiali."
+    )
     if (!conferma2) return
 
-    const { error: errorOre } = await supabase
-      .from("ore_operatori")
-      .delete()
-      .eq("intervento_id", i.id)
+    await supabase.from("ore_operatori").delete().eq("intervento_id", i.id)
+    await supabase.from("materiali_bollettino").delete().eq("intervento_id", i.id)
 
-    if (errorOre) {
-      console.error(errorOre)
-      alert("Errore eliminazione ore operatori: " + errorOre.message)
+    const { error } = await supabase.from("interventi").delete().eq("id", i.id)
+
+    if (error) {
+      console.error(error)
+      alert("Errore eliminazione intervento: " + error.message)
       return
-    }
-
-    const { error: errorMateriali } = await supabase
-      .from("materiali_bollettino")
-      .delete()
-      .eq("intervento_id", i.id)
-
-    if (errorMateriali) {
-      console.error(errorMateriali)
-      alert("Errore eliminazione materiali: " + errorMateriali.message)
-      return
-    }
-
-    const { error: errorIntervento } = await supabase
-      .from("interventi")
-      .delete()
-      .eq("id", i.id)
-
-    if (errorIntervento) {
-      console.error(errorIntervento)
-      alert("Errore eliminazione intervento: " + errorIntervento.message)
-      return
-    }
-
-    if (editingId === i.id) {
-      setEditingId(null)
-      setForm({
-        cliente_id: "",
-        cliente_nome: "",
-        cantiere_id: "",
-        data: dataDaUrl || dayjs().format("YYYY-MM-DD"),
-        descrizione: "",
-        operatori: [],
-        materiali: []
-      })
-      setCantieri([])
     }
 
     alert("✅ Intervento eliminato")
@@ -888,7 +809,9 @@ export default function InterventiPage() {
 
   function vaiABolle() {
     if (!editingId) {
-      alert("Prima salva l'intervento. Dopo il salvataggio potrai importare la bolla direttamente qui.")
+      alert(
+        "Prima salva l'intervento. Dopo il salvataggio potrai importare la bolla direttamente qui."
+      )
       return
     }
 
@@ -897,7 +820,9 @@ export default function InterventiPage() {
 
   function vaiACarrelli() {
     if (!editingId) {
-      alert("Prima salva l'intervento. Dopo il salvataggio potrai importare il carrello direttamente qui.")
+      alert(
+        "Prima salva l'intervento. Dopo il salvataggio potrai importare il carrello direttamente qui."
+      )
       return
     }
 
@@ -906,7 +831,9 @@ export default function InterventiPage() {
 
   function vaiAPreferiti() {
     if (!editingId) {
-      alert("Prima salva l'intervento. Dopo il salvataggio potrai importare i preferiti direttamente qui.")
+      alert(
+        "Prima salva l'intervento. Dopo il salvataggio potrai importare i preferiti direttamente qui."
+      )
       return
     }
 
@@ -939,7 +866,7 @@ export default function InterventiPage() {
             cantiere_id: form.cantiere_id || null,
             data: form.data,
             descrizione: form.descrizione.trim(),
-            archiviato: false
+            archiviato: false,
           })
           .eq("id", editingId)
 
@@ -951,38 +878,23 @@ export default function InterventiPage() {
 
         int = { id: editingId }
 
-        const { error: delOpsError } = await supabase
-          .from("ore_operatori")
-          .delete()
-          .eq("intervento_id", editingId)
-
-        if (delOpsError) {
-          console.error(delOpsError)
-          alert("Errore aggiornamento operatori: " + delOpsError.message)
-          return
-        }
-
-        const { error: delMatsError } = await supabase
+        await supabase.from("ore_operatori").delete().eq("intervento_id", editingId)
+        await supabase
           .from("materiali_bollettino")
           .delete()
           .eq("intervento_id", editingId)
-
-        if (delMatsError) {
-          console.error(delMatsError)
-          alert("Errore aggiornamento materiali: " + delMatsError.message)
-          return
-        }
-
       } else {
         const { data, error: insertError } = await supabase
           .from("interventi")
-          .insert([{
-            cliente_id: form.cliente_id,
-            cantiere_id: form.cantiere_id || null,
-            data: form.data,
-            descrizione: form.descrizione.trim(),
-            archiviato: false
-          }])
+          .insert([
+            {
+              cliente_id: form.cliente_id,
+              cantiere_id: form.cantiere_id || null,
+              data: form.data,
+              descrizione: form.descrizione.trim(),
+              archiviato: false,
+            },
+          ])
           .select()
           .single()
 
@@ -996,28 +908,24 @@ export default function InterventiPage() {
       }
 
       const ops = form.operatori
-        .filter(o => o.operatore_id && Number(o.ore || 0) > 0)
-        .map(o => ({
+        .filter((o) => o.operatore_id && Number(o.ore || 0) > 0)
+        .map((o) => ({
           intervento_id: int.id,
           operatore_id: o.operatore_id,
-          ore: Number(o.ore || 0)
+          ore: Number(o.ore || 0),
         }))
 
       if (ops.length) {
-        const { error: opsInsertError } = await supabase
-          .from("ore_operatori")
-          .insert(ops)
-
-        if (opsInsertError) {
-          console.error(opsInsertError)
-          alert("Errore salvataggio operatori: " + opsInsertError.message)
+        const { error } = await supabase.from("ore_operatori").insert(ops)
+        if (error) {
+          alert("Errore salvataggio operatori: " + error.message)
           return
         }
       }
 
       const mats = form.materiali
-        .filter(m => m.codice || m.descrizione)
-        .map(m => ({
+        .filter((m) => m.codice || m.descrizione)
+        .map((m) => ({
           intervento_id: int.id,
           codice: m.codice || "",
           descrizione: m.descrizione || "",
@@ -1026,31 +934,27 @@ export default function InterventiPage() {
               ? 0
               : Number(m.quantita || 1) > 0
                 ? Number(m.quantita || 1)
-                : 1
+                : 1,
         }))
 
       if (mats.length) {
-        const { error: matsInsertError } = await supabase
-          .from("materiali_bollettino")
-          .insert(mats)
-
-        if (matsInsertError) {
-          console.error(matsInsertError)
-          alert("Errore salvataggio materiali: " + matsInsertError.message)
+        const { error } = await supabase.from("materiali_bollettino").insert(mats)
+        if (error) {
+          alert("Errore salvataggio materiali: " + error.message)
           return
         }
       }
 
       setEditingId(int.id)
 
-      alert(editingId
-        ? "✅ Intervento aggiornato"
-        : "✅ Intervento salvato. Ora puoi importare bolle, carrelli o preferiti dentro questo intervento."
+      alert(
+        editingId
+          ? "✅ Intervento aggiornato"
+          : "✅ Intervento salvato. Ora puoi importare bolle, carrelli o preferiti dentro questo intervento."
       )
 
       caricaInterventi()
       navigate(`/interventi?edit_id=${int.id}`)
-
     } catch (err) {
       console.error(err)
       alert("Errore imprevisto durante il salvataggio")
@@ -1060,484 +964,649 @@ export default function InterventiPage() {
   }
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={page}>
+      <h2 style={{ marginTop: 0 }}>Interventi</h2>
 
-      <h2>Interventi</h2>
-
-      {editingId && (
-        <div style={{
-          background: "#fff3cd",
-          color: "#856404",
-          border: "1px solid #ffeeba",
-          padding: 10,
-          marginBottom: 10,
-          borderRadius: 6,
-          fontWeight: "bold"
-        }}>
-          ✏️ INTERVENTO IN MODIFICA / APERTO: #{editingId}
-          <div style={{ fontWeight: "normal", marginTop: 4 }}>
-            Puoi aggiornare i dati oppure importare bolle, carrelli e preferiti direttamente in questo intervento.
-          </div>
-        </div>
-      )}
-
-      <div style={{ position: "relative" }}>
-        <input
-          ref={clienteInputRef}
-          placeholder="Cerca cliente..."
-          value={form.cliente_nome}
-          onChange={(e) => {
-            setForm({ ...form, cliente_nome: e.target.value, cliente_id: "", cantiere_id: "" })
-            setCantieri([])
-            setShowClienti(true)
-            setClienteEvidenziato(0)
-          }}
-          onFocus={() => setShowClienti(true)}
-          onKeyDown={gestisciTastieraCliente}
-          onBlur={() => setTimeout(() => setShowClienti(false), 200)}
-        />
-
-        {showClienti && form.cliente_nome && (
-          <div style={{
-            border: "1px solid #ccc",
-            position: "absolute",
-            background: "white",
-            width: "100%",
-            zIndex: 10
-          }}>
-            {clientiFiltrati()
-              .map((c, index) => (
-                <div
-                  key={c.id}
-                  onMouseEnter={() => setClienteEvidenziato(index)}
-                  onClick={() => selezionaCliente(c, true)}
-                  style={{
-                    padding: 8,
-                    cursor: "pointer",
-                    background: clienteEvidenziato === index ? "#dbeafe" : "white",
-                    fontWeight: clienteEvidenziato === index ? "bold" : "normal"
-                  }}
-                >
-                  {c.nome}
-                </div>
-              ))}
-
-            {clientiFiltrati().length === 0 && (
-              <div style={{ padding: 5, color: "#777" }}>
-                Nessun cliente trovato
+      <div style={layout}>
+        <div style={mainColumn}>
+          {editingId && (
+            <div style={editingBox}>
+              ✏️ INTERVENTO IN MODIFICA / APERTO: #{editingId}
+              <div style={{ fontWeight: "normal", marginTop: 4 }}>
+                Puoi aggiornare i dati oppure importare bolle, carrelli e
+                preferiti direttamente in questo intervento.
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
 
-      <select
-        ref={cantiereSelectRef}
-        value={form.cantiere_id}
-        onChange={e => setForm({ ...form, cantiere_id: e.target.value })}
-        onKeyDown={gestisciTastieraCantiere}
-      >
-        <option value="">Seleziona cantiere</option>
-        {cantieri.map(c => (
-          <option key={c.id} value={c.id}>{c.nome}</option>
-        ))}
-      </select>
+          <div style={section}>
+            <h3 style={sectionTitle}>Dati intervento</h3>
 
-      <input
-        ref={dataInputRef}
-        type="date"
-        value={form.data}
-        onChange={e => setForm({ ...form, data: e.target.value })}
-        onKeyDown={gestisciTastieraData}
-      />
-
-      <input
-        ref={descrizioneInputRef}
-        placeholder="Descrizione"
-        value={form.descrizione}
-        onChange={e => setForm({ ...form, descrizione: e.target.value })}
-        onKeyDown={gestisciTastieraDescrizione}
-        onKeyUp={gestisciTastieraDescrizione}
-      />
-
-      <h4>Operatori</h4>
-
-      {form.operatori.map((op, i) => (
-        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8, flexWrap: "wrap" }}>
-          <div style={{ position: "relative", minWidth: 240, flex: 1 }}>
-            <input
-              ref={el => operatoreInputRefs.current[i] = el}
-              placeholder="Cerca operatore..."
-              value={operatoriRicerca[i] ?? nomeOperatoreDaId(op.operatore_id)}
-              onChange={e => aggiornaRicercaOperatore(i, e.target.value)}
-              onFocus={() => {
-                setShowOperatori(prev => {
-                  const nuovo = [...prev]
-                  nuovo[i] = true
-                  return nuovo
-                })
-              }}
-              onKeyDown={e => gestisciTastieraOperatore(e, i)}
-              onBlur={() => {
-                setTimeout(() => {
-                  setShowOperatori(prev => {
-                    const nuovo = [...prev]
-                    nuovo[i] = false
-                    return nuovo
+            <div style={{ position: "relative" }}>
+              <input
+                ref={clienteInputRef}
+                placeholder="Cerca cliente..."
+                value={form.cliente_nome}
+                onChange={(e) => {
+                  setForm({
+                    ...form,
+                    cliente_nome: e.target.value,
+                    cliente_id: "",
+                    cantiere_id: "",
                   })
-                }, 200)
-              }}
-              style={{ width: "100%" }}
+                  setCantieri([])
+                  setShowClienti(true)
+                  setClienteEvidenziato(0)
+                }}
+                onFocus={() => setShowClienti(true)}
+                onKeyDown={gestisciTastieraCliente}
+                onBlur={() => setTimeout(() => setShowClienti(false), 200)}
+                style={inputFull}
+              />
+
+              {showClienti && form.cliente_nome && (
+                <div style={suggestBox}>
+                  {clientiFiltrati().map((c, index) => (
+                    <div
+                      key={c.id}
+                      onMouseEnter={() => setClienteEvidenziato(index)}
+                      onClick={() => selezionaCliente(c, true)}
+                      style={{
+                        padding: 8,
+                        cursor: "pointer",
+                        background:
+                          clienteEvidenziato === index ? "#dbeafe" : "white",
+                        fontWeight:
+                          clienteEvidenziato === index ? "bold" : "normal",
+                      }}
+                    >
+                      {c.nome}
+                    </div>
+                  ))}
+
+                  {clientiFiltrati().length === 0 && (
+                    <div style={{ padding: 5, color: "#777" }}>
+                      Nessun cliente trovato
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <select
+              ref={cantiereSelectRef}
+              value={form.cantiere_id}
+              onChange={(e) => setForm({ ...form, cantiere_id: e.target.value })}
+              onKeyDown={gestisciTastieraCantiere}
+              style={inputFull}
+            >
+              <option value="">Seleziona cantiere</option>
+              {cantieri.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+
+            <input
+              ref={dataInputRef}
+              type="date"
+              value={form.data}
+              onChange={(e) => setForm({ ...form, data: e.target.value })}
+              onKeyDown={gestisciTastieraData}
+              style={inputFull}
             />
 
-            {showOperatori[i] && operatoriRicerca[i] && (
-              <div style={{
-                border: "1px solid #ccc",
-                position: "absolute",
-                background: "white",
-                width: "100%",
-                zIndex: 20
-              }}>
-                {operatoriFiltrati(i).map((operatore, index) => (
-                  <div
-                    key={operatore.id}
-                    onMouseEnter={() => {
-                      setOperatoreEvidenziato(prev => {
+            <input
+              ref={descrizioneInputRef}
+              placeholder="Descrizione"
+              value={form.descrizione}
+              onChange={(e) =>
+                setForm({ ...form, descrizione: e.target.value })
+              }
+              onKeyDown={gestisciTastieraDescrizione}
+              style={inputFull}
+            />
+          </div>
+
+          <div style={section}>
+            <h3 style={sectionTitle}>Operatori</h3>
+
+            {form.operatori.map((op, i) => (
+              <div key={i} style={operatorRow}>
+                <div style={{ position: "relative", minWidth: 240, flex: 1 }}>
+                  <input
+                    ref={(el) => (operatoreInputRefs.current[i] = el)}
+                    placeholder="Cerca operatore..."
+                    value={operatoriRicerca[i] ?? nomeOperatoreDaId(op.operatore_id)}
+                    onChange={(e) => aggiornaRicercaOperatore(i, e.target.value)}
+                    onFocus={() => {
+                      setShowOperatori((prev) => {
                         const nuovo = [...prev]
-                        nuovo[i] = index
+                        nuovo[i] = true
                         return nuovo
                       })
                     }}
-                    onClick={() => selezionaOperatore(operatore, i, true)}
-                    style={{
-                      padding: 8,
-                      cursor: "pointer",
-                      background: (operatoreEvidenziato[i] || 0) === index ? "#dbeafe" : "white",
-                      fontWeight: (operatoreEvidenziato[i] || 0) === index ? "bold" : "normal"
+                    onKeyDown={(e) => gestisciTastieraOperatore(e, i)}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setShowOperatori((prev) => {
+                          const nuovo = [...prev]
+                          nuovo[i] = false
+                          return nuovo
+                        })
+                      }, 200)
                     }}
-                  >
-                    {operatore.nome}
-                  </div>
-                ))}
+                    style={inputFull}
+                  />
 
-                {operatoriFiltrati(i).length === 0 && (
-                  <div style={{ padding: 5, color: "#777" }}>
-                    Nessun operatore trovato
-                  </div>
-                )}
+                  {showOperatori[i] && operatoriRicerca[i] && (
+                    <div style={suggestBox}>
+                      {operatoriFiltrati(i).map((operatore, index) => (
+                        <div
+                          key={operatore.id}
+                          onMouseEnter={() => {
+                            setOperatoreEvidenziato((prev) => {
+                              const nuovo = [...prev]
+                              nuovo[i] = index
+                              return nuovo
+                            })
+                          }}
+                          onClick={() => selezionaOperatore(operatore, i, true)}
+                          style={{
+                            padding: 8,
+                            cursor: "pointer",
+                            background:
+                              (operatoreEvidenziato[i] || 0) === index
+                                ? "#dbeafe"
+                                : "white",
+                            fontWeight:
+                              (operatoreEvidenziato[i] || 0) === index
+                                ? "bold"
+                                : "normal",
+                          }}
+                        >
+                          {operatore.nome}
+                        </div>
+                      ))}
+
+                      {operatoriFiltrati(i).length === 0 && (
+                        <div style={{ padding: 5, color: "#777" }}>
+                          Nessun operatore trovato
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <input
+                  ref={(el) => (oreInputRefs.current[i] = el)}
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  placeholder="Ore"
+                  value={op.ore}
+                  onChange={(e) => aggiornaOperatore(i, "ore", e.target.value)}
+                  onKeyDown={(e) => gestisciTastieraOre(e, i)}
+                  style={{ ...inputFull, width: 90 }}
+                />
+
+                <button onClick={() => eliminaOperatore(i)} style={dangerSmall}>
+                  ❌
+                </button>
+              </div>
+            ))}
+
+            <button onClick={() => aggiungiOperatore(true)} style={secondaryButton}>
+              ➕ Operatore
+            </button>
+          </div>
+
+          <div style={section}>
+            <div style={materialHeader}>
+              <h3 style={sectionTitle}>📦 Materiali inseriti</h3>
+
+              {!showAltroMat && (
+                <button onClick={() => setShowAltroMat(true)} style={secondaryButton}>
+                  ➕ Materiale libero
+                </button>
+              )}
+
+              {showAltroMat && (
+                <button
+                  onClick={() => {
+                    setShowAltroMat(false)
+                    setAltroMat({
+                      codice: "",
+                      descrizione: "",
+                      quantita: 1,
+                    })
+                  }}
+                  style={secondaryButton}
+                >
+                  ❌ Chiudi
+                </button>
+              )}
+            </div>
+
+            {showAltroMat && (
+              <div style={manualMaterialBox}>
+                <input
+                  placeholder="Codice"
+                  value={altroMat.codice}
+                  onChange={(e) =>
+                    setAltroMat((prev) => ({ ...prev, codice: e.target.value }))
+                  }
+                  style={{ ...inputFull, minWidth: 120 }}
+                />
+
+                <input
+                  placeholder="Descrizione"
+                  value={altroMat.descrizione}
+                  onChange={(e) =>
+                    setAltroMat((prev) => ({
+                      ...prev,
+                      descrizione: e.target.value,
+                    }))
+                  }
+                  style={{ ...inputFull, minWidth: 260, flex: 1 }}
+                />
+
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Qta"
+                  value={altroMat.quantita}
+                  onChange={(e) =>
+                    setAltroMat((prev) => ({
+                      ...prev,
+                      quantita: e.target.value,
+                    }))
+                  }
+                  style={{ ...inputFull, width: 80 }}
+                />
+
+                <button onClick={aggiungiMaterialeManuale} style={secondaryButton}>
+                  ➕ Altro
+                </button>
               </div>
             )}
+
+            {form.materiali.length === 0 && (
+              <div style={emptyBox}>Nessun materiale inserito.</div>
+            )}
+
+            {form.materiali.map((m, i) => {
+              if (m.codice === "BOLLA") {
+                return (
+                  <div key={i} style={bollaBox}>
+                    <div>{m.descrizione}</div>
+
+                    <button
+                      type="button"
+                      onClick={() => ripristinaBolla(m)}
+                      style={warningButton}
+                    >
+                      ↩ Ripristina bolla
+                    </button>
+                  </div>
+                )
+              }
+
+              return (
+                <div key={i} style={materialRow}>
+                  <div style={{ flex: 1 }}>
+                    {m.codice || "-"} — {m.descrizione || "-"}
+                  </div>
+
+                  <input
+                    type="number"
+                    min="1"
+                    value={m.quantita}
+                    onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
+                    style={{ ...inputFull, width: 70 }}
+                  />
+
+                  <button onClick={() => eliminaMateriale(i)} style={dangerSmall}>
+                    ❌
+                  </button>
+                </div>
+              )
+            })}
           </div>
 
-          <input
-            ref={el => oreInputRefs.current[i] = el}
-            type="number"
-            min="0"
-            step="0.5"
-            placeholder="Ore"
-            value={op.ore}
-            onChange={e => aggiornaOperatore(i, "ore", e.target.value)}
-            onKeyDown={e => gestisciTastieraOre(e, i)}
-            style={{ width: 90 }}
-          />
+          <div style={section}>
+            <h3 style={sectionTitle}>📋 Interventi salvati</h3>
 
-          <button onClick={() => eliminaOperatore(i)}>❌</button>
-        </div>
-      ))}
+            {interventi.length === 0 && (
+              <div style={emptyBox}>Nessun intervento salvato.</div>
+            )}
 
-      <button onClick={() => aggiungiOperatore(true)}>➕ Operatore</button>
-
-      <br /><br />
-
-      <div style={{
-        display: "flex",
-        gap: 10,
-        alignItems: "center",
-        flexWrap: "wrap"
-      }}>
-        <button
-          ref={salvaButtonRef}
-          onClick={salva}
-          disabled={saving}
-          style={{
-            background: editingId ? "#0d6efd" : "#2f64d6",
-            color: "white",
-            padding: "8px 14px",
-            border: "none",
-            borderRadius: 5,
-            cursor: saving ? "not-allowed" : "pointer",
-            fontWeight: "bold"
-          }}
-        >
-          {saving ? "Salvataggio..." : editingId ? "💾 Aggiorna Intervento" : "💾 Salva Intervento"}
-        </button>
-
-        {!editingId && (
-          <span style={{
-            background: "#f8f9fa",
-            border: "1px solid #ddd",
-            padding: "8px 10px",
-            borderRadius: 6
-          }}>
-            Prima salva l’intervento. Dopo il salvataggio potrai importare materiale qui.
-          </span>
-        )}
-
-        {editingId && (
-          <button
-            onClick={nuovoIntervento}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 5,
-              cursor: "pointer"
-            }}
-          >
-            🧹 Nuovo intervento
-          </button>
-        )}
-      </div>
-
-      <div style={{
-        marginTop: 18,
-        display: "flex",
-        gap: 10,
-        flexWrap: "wrap"
-      }}>
-        <button onClick={vaiABolle}>
-          📦 Bolla
-        </button>
-
-        <button onClick={vaiACarrelli}>
-          📥 Carrello
-        </button>
-
-        <button onClick={vaiAPreferiti}>
-          ⭐ Preferiti
-        </button>
-      </div>
-
-      <div style={{
-        marginTop: 10,
-        fontWeight: "bold",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        flexWrap: "wrap"
-      }}>
-        <span>📦 Materiali inseriti nell’intervento</span>
-
-        {!showAltroMat && (
-          <button onClick={() => setShowAltroMat(true)}>
-            ➕ Aggiungi materiale libero
-          </button>
-        )}
-
-        {showAltroMat && (
-          <button
-            onClick={() => {
-              setShowAltroMat(false)
-              setAltroMat({
-                codice: "",
-                descrizione: "",
-                quantita: 1
-              })
-            }}
-          >
-            ❌ Chiudi
-          </button>
-        )}
-      </div>
-
-      {showAltroMat && (
-        <div style={{
-          marginTop: 8,
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          alignItems: "center",
-          border: "1px solid #ddd",
-          padding: 8,
-          borderRadius: 6,
-          background: "#f8f9fa"
-        }}>
-          <input
-            placeholder="Codice"
-            value={altroMat.codice}
-            onChange={(e) => setAltroMat(prev => ({ ...prev, codice: e.target.value }))}
-            style={{ padding: 6, minWidth: 120 }}
-          />
-
-          <input
-            placeholder="Descrizione"
-            value={altroMat.descrizione}
-            onChange={(e) => setAltroMat(prev => ({ ...prev, descrizione: e.target.value }))}
-            style={{ padding: 6, minWidth: 260, flex: 1 }}
-          />
-
-          <input
-            type="number"
-            min="1"
-            placeholder="Qta"
-            value={altroMat.quantita}
-            onChange={(e) => setAltroMat(prev => ({ ...prev, quantita: e.target.value }))}
-            style={{ padding: 6, width: 80 }}
-          />
-
-          <button onClick={aggiungiMaterialeManuale}>
-            ➕ Altro
-          </button>
-        </div>
-      )}
-
-      {form.materiali.length === 0 && (
-        <div style={{
-          marginTop: 10,
-          padding: 8,
-          border: "1px solid #eee",
-          background: "#fafafa",
-          borderRadius: 6
-        }}>
-          Nessun materiale inserito.
-        </div>
-      )}
-
-      {form.materiali.map((m, i) => {
-        if (m.codice === "BOLLA") {
-          return (
-            <div
-              key={i}
-              style={{
-                marginTop: 14,
-                padding: 12,
-                background: "#eef4ff",
-                border: "2px solid #0d6efd",
-                borderRadius: 8,
-                fontWeight: "bold",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 10,
-                flexWrap: "wrap"
-              }}
-            >
-              <div>{m.descrizione}</div>
-
-              <button
-                type="button"
-                onClick={() => ripristinaBolla(m)}
+            {interventi.map((i) => (
+              <div
+                key={i.id}
                 style={{
-                  background: "#ffc107",
-                  border: "none",
-                  padding: "7px 12px",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  fontWeight: "bold"
+                  ...savedCard,
+                  border:
+                    editingId === i.id ? "2px solid orange" : "1px solid #ccc",
+                  background: editingId === i.id ? "#fffaf0" : "white",
                 }}
               >
-                ↩ Ripristina bolla
-              </button>
-            </div>
-          )
-        }
+                <div>
+                  <b>{i.data ? dayjs(i.data).format("DD/MM/YYYY") : "-"}</b>
+                </div>
+                <div>
+                  <b>Cliente:</b> {i.clienti?.nome || "-"}
+                </div>
+                <div>
+                  <b>Cantiere:</b> {i.cantieri?.nome || "-"}
+                </div>
+                <div>
+                  <b>Descrizione:</b> {i.descrizione || "-"}
+                </div>
+                <div>
+                  <b>Materiali:</b> {i.materiali_bollettino?.length || 0}
+                </div>
 
-        return (
-          <div
-            key={i}
+                <div style={savedButtons}>
+                  <button onClick={() => navigate(`/bollettino/${i.id}`)}>
+                    👁 Apri
+                  </button>
+
+                  <button onClick={() => modificaIntervento(i)}>✏️ Modifica</button>
+
+                  <button onClick={() => navigate(`/bolle?intervento_id=${i.id}`)}>
+                    📦 Bolla
+                  </button>
+
+                  <button
+                    onClick={() => navigate(`/carrelli?intervento_id=${i.id}`)}
+                  >
+                    📥 Carrello
+                  </button>
+
+                  <button
+                    onClick={() => navigate(`/preferiti?intervento_id=${i.id}`)}
+                  >
+                    ⭐ Preferiti
+                  </button>
+
+                  <button
+                    onClick={() => archiviaIntervento(i)}
+                    style={{ background: "#ff9800", color: "white" }}
+                  >
+                    📦 Archivia
+                  </button>
+
+                  <button
+                    onClick={() => eliminaIntervento(i)}
+                    style={{ background: "red", color: "white" }}
+                  >
+                    🗑 Elimina
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={sideColumn}>
+          <h3 style={{ marginTop: 0 }}>Comandi</h3>
+
+          <button
+            ref={salvaButtonRef}
+            onClick={salva}
+            disabled={saving}
             style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              borderBottom: "1px solid #eee",
-              padding: "6px 0"
+              ...sideButton,
+              background: editingId ? "#0d6efd" : "#198754",
+              cursor: saving ? "not-allowed" : "pointer",
             }}
           >
-            <div style={{ flex: 1 }}>
-              {m.codice || "-"} — {m.descrizione || "-"}
+            {saving
+              ? "Salvataggio..."
+              : editingId
+                ? "💾 Aggiorna"
+                : "💾 Salva"}
+          </button>
+
+          <button onClick={nuovoIntervento} style={sideButtonLight}>
+            🧹 Nuovo
+          </button>
+
+          <button onClick={() => navigate("/")} style={sideButtonLight}>
+            📅 Calendario
+          </button>
+
+          <button onClick={() => navigate("/clienti")} style={sideButtonLight}>
+            ➕ Aggiungi cliente
+          </button>
+
+          <button onClick={vaiABolle} style={sideButton}>
+            📦 Bolla
+          </button>
+
+          <button onClick={vaiACarrelli} style={sideButton}>
+            📥 Carrello
+          </button>
+
+          <button onClick={vaiAPreferiti} style={sideButton}>
+            ⭐ Preferiti
+          </button>
+
+          {editingId && (
+            <button
+              onClick={() => navigate(`/bollettino/${editingId}`)}
+              style={sideButtonLight}
+            >
+              👁 Bollettino
+            </button>
+          )}
+
+          {!editingId && (
+            <div style={infoBox}>
+              Prima salva l’intervento. Dopo il salvataggio potrai importare
+              bolla, carrello o preferiti.
             </div>
-
-            <input
-              type="number"
-              min="1"
-              value={m.quantita}
-              onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
-              style={{ width: 70 }}
-            />
-
-            <button onClick={() => eliminaMateriale(i)}>❌</button>
-          </div>
-        )
-      })}
-
-      <br /><br />
-
-      <h3 style={{ marginTop: 30 }}>📋 Interventi salvati</h3>
-
-      {interventi.length === 0 && (
-        <div style={{
-          marginTop: 10,
-          padding: 12,
-          border: "1px solid #ddd",
-          borderRadius: 6,
-          background: "#fff"
-        }}>
-          Nessun intervento salvato.
+          )}
         </div>
-      )}
-
-      {interventi.map(i => (
-        <div key={i.id} style={{
-          border: editingId === i.id ? "2px solid orange" : "1px solid #ccc",
-          padding: 12,
-          marginTop: 8,
-          borderRadius: 6,
-          background: editingId === i.id ? "#fffaf0" : "white"
-        }}>
-          <div><b>{i.data ? dayjs(i.data).format("DD/MM/YYYY") : "-"}</b></div>
-          <div><b>Cliente:</b> {i.clienti?.nome || "-"}</div>
-          <div><b>Cantiere:</b> {i.cantieri?.nome || "-"}</div>
-          <div><b>Descrizione:</b> {i.descrizione || "-"}</div>
-          <div><b>Materiali:</b> {i.materiali_bollettino?.length || 0}</div>
-
-          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-
-            <button onClick={() => navigate(`/bollettino/${i.id}`)}>
-              👁 Apri
-            </button>
-
-            <button onClick={() => modificaIntervento(i)}>
-              ✏️ Modifica
-            </button>
-
-            <button onClick={() => navigate(`/bolle?intervento_id=${i.id}`)}>
-              📦 Bolla
-            </button>
-
-            <button onClick={() => navigate(`/carrelli?intervento_id=${i.id}`)}>
-              📥 Carrello
-            </button>
-
-            <button onClick={() => navigate(`/preferiti?intervento_id=${i.id}`)}>
-              ⭐ Preferiti
-            </button>
-
-            <button
-              onClick={() => archiviaIntervento(i)}
-              style={{ background: "#ff9800", color: "white" }}
-            >
-              📦 Archivia
-            </button>
-
-            <button
-              onClick={() => eliminaIntervento(i)}
-              style={{ background: "red", color: "white" }}
-            >
-              🗑 Elimina
-            </button>
-
-          </div>
-        </div>
-      ))}
-
+      </div>
     </div>
   )
+}
+
+const page = {
+  padding: 12,
+  maxWidth: 1600,
+  margin: "0 auto",
+  boxSizing: "border-box",
+}
+
+const layout = {
+  display: "grid",
+  gridTemplateColumns: "1fr 210px",
+  gap: 16,
+  alignItems: "start",
+}
+
+const mainColumn = {
+  minWidth: 0,
+}
+
+const sideColumn = {
+  position: "sticky",
+  top: 10,
+  background: "#fff",
+  border: "2px solid #1976d2",
+  borderRadius: 12,
+  padding: 12,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+}
+
+const section = {
+  background: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: 10,
+  padding: 12,
+  marginBottom: 12,
+}
+
+const sectionTitle = {
+  marginTop: 0,
+  marginBottom: 10,
+}
+
+const editingBox = {
+  background: "#fff3cd",
+  color: "#856404",
+  border: "1px solid #ffeeba",
+  padding: 10,
+  marginBottom: 10,
+  borderRadius: 6,
+  fontWeight: "bold",
+}
+
+const inputFull = {
+  width: "100%",
+  padding: 9,
+  boxSizing: "border-box",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  marginBottom: 8,
+}
+
+const suggestBox = {
+  border: "1px solid #ccc",
+  position: "absolute",
+  background: "white",
+  width: "100%",
+  zIndex: 50,
+  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+}
+
+const operatorRow = {
+  display: "flex",
+  gap: 10,
+  alignItems: "flex-start",
+  marginBottom: 8,
+  flexWrap: "wrap",
+}
+
+const materialHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  alignItems: "center",
+  flexWrap: "wrap",
+}
+
+const manualMaterialBox = {
+  marginTop: 8,
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "center",
+  border: "1px solid #ddd",
+  padding: 8,
+  borderRadius: 6,
+  background: "#f8f9fa",
+}
+
+const emptyBox = {
+  marginTop: 10,
+  padding: 10,
+  border: "1px solid #eee",
+  background: "#fafafa",
+  borderRadius: 6,
+}
+
+const bollaBox = {
+  marginTop: 10,
+  padding: 12,
+  background: "#eef4ff",
+  border: "2px solid #0d6efd",
+  borderRadius: 8,
+  fontWeight: "bold",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+}
+
+const materialRow = {
+  display: "flex",
+  gap: 10,
+  alignItems: "center",
+  borderBottom: "1px solid #eee",
+  padding: "6px 0",
+}
+
+const savedCard = {
+  padding: 12,
+  marginTop: 8,
+  borderRadius: 6,
+}
+
+const savedButtons = {
+  marginTop: 10,
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+}
+
+const sideButton = {
+  background: "#1976d2",
+  color: "white",
+  border: "none",
+  padding: "12px 14px",
+  borderRadius: 8,
+  fontWeight: "bold",
+  cursor: "pointer",
+  width: "100%",
+}
+
+const sideButtonLight = {
+  background: "#f5f5f5",
+  color: "#111",
+  border: "1px solid #ccc",
+  padding: "12px 14px",
+  borderRadius: 8,
+  fontWeight: "bold",
+  cursor: "pointer",
+  width: "100%",
+}
+
+const secondaryButton = {
+  padding: "8px 12px",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  cursor: "pointer",
+  fontWeight: "bold",
+}
+
+const warningButton = {
+  background: "#ffc107",
+  border: "none",
+  padding: "7px 12px",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontWeight: "bold",
+}
+
+const dangerSmall = {
+  padding: "8px 10px",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  cursor: "pointer",
+}
+
+const infoBox = {
+  background: "#f8f9fa",
+  border: "1px solid #ddd",
+  padding: 10,
+  borderRadius: 8,
+  fontSize: 13,
 }

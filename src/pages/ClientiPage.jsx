@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
+import { useNavigate } from "react-router-dom"
 
 dayjs.extend(utc)
 
@@ -14,10 +15,13 @@ const cantiereVuoto = {
 }
 
 export default function ClientiPage() {
+  const navigate = useNavigate()
+
   const [clienti, setClienti] = useState([])
   const [cantieri, setCantieri] = useState({})
   const [search, setSearch] = useState("")
   const [clienteAperto, setClienteAperto] = useState(null)
+  const [loading, setLoading] = useState(false)
 
   const [form, setForm] = useState({
     id: null,
@@ -33,6 +37,8 @@ export default function ClientiPage() {
   }, [])
 
   async function loadClienti() {
+    setLoading(true)
+
     const { data, error } = await supabase
       .from("clienti")
       .select("*")
@@ -40,6 +46,7 @@ export default function ClientiPage() {
       .order("nome")
 
     if (error) {
+      setLoading(false)
       alert("Errore clienti")
       return
     }
@@ -50,6 +57,8 @@ export default function ClientiPage() {
       .from("cantieri")
       .select("*")
       .order("nome")
+
+    setLoading(false)
 
     if (errorCantieri) {
       alert("Errore cantieri")
@@ -75,6 +84,10 @@ export default function ClientiPage() {
     })
 
     setCantieriForm([{ ...cantiereVuoto }])
+
+    setTimeout(() => {
+      document.getElementById("campo-nome")?.focus()
+    }, 100)
   }
 
   function puoModificare(cliente) {
@@ -115,7 +128,10 @@ export default function ClientiPage() {
   }
 
   async function salvaCliente() {
-    if (!form.nome.trim()) return alert("Nome cliente obbligatorio")
+    if (!form.nome.trim()) {
+      alert("Nome cliente obbligatorio")
+      return
+    }
 
     const cantieriValidi = cantieriForm.filter((c) => c.nome.trim())
 
@@ -191,7 +207,7 @@ export default function ClientiPage() {
       }
     }
 
-    alert("Cliente salvato correttamente")
+    alert("✅ Cliente salvato")
     resetForm()
     loadClienti()
   }
@@ -259,6 +275,7 @@ export default function ClientiPage() {
     })
 
     setCantieriForm([{ ...cantiereVuoto }])
+    setClienteAperto(cliente.id)
 
     setTimeout(() => {
       const el = document.getElementById("campo-nome")
@@ -270,204 +287,308 @@ export default function ClientiPage() {
     }, 100)
   }
 
+  function apriChiudiCliente(id) {
+    setClienteAperto((prev) => (prev === id ? null : id))
+  }
+
   const clientiFiltrati = clienti.filter((c) =>
     c.nome.toLowerCase().includes(search.toLowerCase())
   )
 
   return (
     <div style={page}>
-      <h2>Anagrafica Clienti</h2>
+      <div style={topBar}>
+        <h2 style={{ margin: 0 }}>👥 Anagrafica clienti</h2>
 
-      <input
-        placeholder="🔍 Cerca cliente..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={searchInput}
-      />
-
-      <div style={formBox}>
-        <h3>{form.id ? "Modifica cliente" : "Nuovo cliente completo"}</h3>
-
-        <input
-          id="campo-nome"
-          placeholder="Nome cliente"
-          value={form.nome}
-          onChange={(e) => setForm({ ...form, nome: e.target.value })}
-          style={input}
-        />
-
-        <input
-          placeholder="Indirizzo"
-          value={form.indirizzo}
-          onChange={(e) => setForm({ ...form, indirizzo: e.target.value })}
-          style={input}
-        />
-
-        <input
-          placeholder="Partita IVA"
-          value={form.piva}
-          onChange={(e) => setForm({ ...form, piva: e.target.value })}
-          style={input}
-        />
-
-        <div style={cantieriFormBox}>
-          <h4>Cantieri da salvare con il cliente</h4>
-
-          {cantieriForm.map((cantiere, index) => (
-            <div key={index} style={cantiereFormCard}>
-              <strong>Cantiere {index + 1}</strong>
-
-              <input
-                placeholder="Nome cantiere"
-                value={cantiere.nome}
-                onChange={(e) =>
-                  aggiornaCantiereForm(index, "nome", e.target.value)
-                }
-                style={input}
-              />
-
-              <input
-                placeholder="Telefono cantiere"
-                value={cantiere.telefono}
-                onChange={(e) =>
-                  aggiornaCantiereForm(index, "telefono", e.target.value)
-                }
-                style={input}
-              />
-
-              <input
-                placeholder="Mail bollettini"
-                value={cantiere.email}
-                onChange={(e) =>
-                  aggiornaCantiereForm(index, "email", e.target.value)
-                }
-                style={input}
-              />
-
-              <button
-                onClick={() => rimuoviRigaCantiere(index)}
-                style={deleteCantiereBtn}
-              >
-                🗑️ Rimuovi riga cantiere
-              </button>
-            </div>
-          ))}
-
-          <button onClick={aggiungiRigaCantiere} style={addBtn}>
-            ➕ Aggiungi altro cantiere
-          </button>
-        </div>
-
-        <div style={buttonRow}>
-          <button onClick={salvaCliente} style={saveBtn}>
-            💾 Salva cliente completo
+        <div style={topButtons}>
+          <button onClick={() => navigate("/interventi")} style={lightBtn}>
+            ↩️ Interventi
           </button>
 
-          <button onClick={resetForm} style={cancelBtn}>
-            Pulisci campi
+          <button onClick={loadClienti} style={lightBtn}>
+            🔄 Aggiorna
           </button>
         </div>
       </div>
 
-      <hr />
+      <div style={layout}>
+        <div style={leftColumn}>
+          <div style={searchBox}>
+            <input
+              placeholder="🔍 Cerca cliente..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={searchInput}
+              autoFocus
+            />
 
-      <h3>Clienti salvati</h3>
+            <div style={countLine}>
+              {loading
+                ? "Caricamento..."
+                : `${clientiFiltrati.length} clienti trovati`}
+            </div>
+          </div>
 
-      {clientiFiltrati.map((c) => {
-        const aperto = clienteAperto === c.id
+          {clientiFiltrati.map((c) => {
+            const aperto = clienteAperto === c.id
+            const listaCantieri = cantieri[c.id] || []
 
-        return (
-          <div key={c.id} style={clienteCard}>
-            <div
-              style={clienteHeader}
-              onClick={() => setClienteAperto(aperto ? null : c.id)}
-            >
-              <strong>{c.nome}</strong>
-              <span>{aperto ? "▲" : "▼"}</span>
+            return (
+              <div key={c.id} style={clienteCard}>
+                <div style={clienteHeader}>
+                  <div
+                    onClick={() => apriChiudiCliente(c.id)}
+                    style={{ flex: 1, cursor: "pointer" }}
+                  >
+                    <strong>{c.nome}</strong>
+                    <div style={smallText}>
+                      🏗️ {listaCantieri.length} cantieri
+                      {c.piva ? ` | P.IVA ${c.piva}` : ""}
+                    </div>
+                  </div>
+
+                  <div style={cardActions}>
+                    <button onClick={() => modificaCliente(c)} style={miniBtn}>
+                      ✏️
+                    </button>
+
+                    <button onClick={() => apriChiudiCliente(c.id)} style={miniBtn}>
+                      {aperto ? "▲" : "▼"}
+                    </button>
+                  </div>
+                </div>
+
+                {aperto && (
+                  <div style={clienteDettagli}>
+                    <div>
+                      <strong>Indirizzo:</strong> {c.indirizzo || "-"}
+                    </div>
+
+                    <div>
+                      <strong>P.IVA:</strong> {c.piva || "-"}
+                    </div>
+
+                    <div style={buttonRow}>
+                      <button onClick={() => modificaCliente(c)} style={editBtn}>
+                        ✏️ Modifica cliente
+                      </button>
+
+                      <button
+                        onClick={() => eliminaCliente(c.id)}
+                        style={deleteBtn}
+                      >
+                        🗑️ Elimina cliente
+                      </button>
+                    </div>
+
+                    <div style={cantieriBox}>
+                      <strong>🏗️ Cantieri</strong>
+
+                      {listaCantieri.length === 0 && (
+                        <p>Nessun cantiere inserito.</p>
+                      )}
+
+                      {listaCantieri.map((can) => (
+                        <div key={can.id} style={cantiereCard}>
+                          <div>
+                            <strong>{can.nome}</strong>
+                          </div>
+
+                          <small>
+                            <strong>Telefono:</strong> {can.telefono || "-"}
+                          </small>
+                          <br />
+
+                          <small>
+                            <strong>Mail bollettini:</strong> {can.email || "-"}
+                          </small>
+
+                          <div style={{ marginTop: 8 }}>
+                            <button
+                              onClick={() => eliminaCantiere(can)}
+                              style={deleteCantiereBtn}
+                            >
+                              🗑️ Elimina solo cantiere
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div style={rightColumn}>
+          <h3 style={{ marginTop: 0 }}>
+            {form.id ? "✏️ Modifica cliente" : "➕ Nuovo cliente"}
+          </h3>
+
+          {form.id && (
+            <div style={editNotice}>
+              Stai modificando: <strong>{form.nome}</strong>
+            </div>
+          )}
+
+          <input
+            id="campo-nome"
+            placeholder="Nome cliente"
+            value={form.nome}
+            onChange={(e) => setForm({ ...form, nome: e.target.value })}
+            style={input}
+          />
+
+          <input
+            placeholder="Indirizzo"
+            value={form.indirizzo}
+            onChange={(e) => setForm({ ...form, indirizzo: e.target.value })}
+            style={input}
+          />
+
+          <input
+            placeholder="Partita IVA"
+            value={form.piva}
+            onChange={(e) => setForm({ ...form, piva: e.target.value })}
+            style={input}
+          />
+
+          <div style={cantieriFormBox}>
+            <div style={cantieriTitle}>
+              <strong>Cantieri da aggiungere</strong>
+
+              <button onClick={aggiungiRigaCantiere} style={miniAddBtn}>
+                ➕
+              </button>
             </div>
 
-            {aperto && (
-              <div style={clienteDettagli}>
-                <div>
-                  <strong>Indirizzo:</strong> {c.indirizzo || "-"}
-                </div>
-
-                <div>
-                  <strong>P.IVA:</strong> {c.piva || "-"}
-                </div>
-
-                <div style={buttonRow}>
-                  <button onClick={() => modificaCliente(c)} style={editBtn}>
-                    ✏️ Modifica cliente
-                  </button>
+            {cantieriForm.map((cantiere, index) => (
+              <div key={index} style={cantiereFormCard}>
+                <div style={cantiereFormHeader}>
+                  <strong>Cantiere {index + 1}</strong>
 
                   <button
-                    onClick={() => eliminaCliente(c.id)}
-                    style={deleteBtn}
+                    onClick={() => rimuoviRigaCantiere(index)}
+                    style={miniDangerBtn}
                   >
-                    🗑️ Elimina cliente
+                    ❌
                   </button>
                 </div>
 
-                <div style={cantieriBox}>
-                  <strong>🏗️ Cantieri</strong>
+                <input
+                  placeholder="Nome cantiere"
+                  value={cantiere.nome}
+                  onChange={(e) =>
+                    aggiornaCantiereForm(index, "nome", e.target.value)
+                  }
+                  style={input}
+                />
 
-                  {(cantieri[c.id] || []).length === 0 && (
-                    <p>Nessun cantiere inserito.</p>
-                  )}
+                <input
+                  placeholder="Telefono"
+                  value={cantiere.telefono}
+                  onChange={(e) =>
+                    aggiornaCantiereForm(index, "telefono", e.target.value)
+                  }
+                  style={input}
+                />
 
-                  {(cantieri[c.id] || []).map((can) => (
-                    <div key={can.id} style={cantiereCard}>
-                      <div>
-                        <strong>{can.nome}</strong>
-                      </div>
-
-                      <small>
-                        <strong>Telefono:</strong> {can.telefono || "-"}
-                      </small>
-                      <br />
-
-                      <small>
-                        <strong>Mail bollettini:</strong> {can.email || "-"}
-                      </small>
-
-                      <div style={{ marginTop: 8 }}>
-                        <button
-                          onClick={() => eliminaCantiere(can)}
-                          style={deleteCantiereBtn}
-                        >
-                          🗑️ Elimina solo cantiere
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <input
+                  placeholder="Mail bollettini"
+                  value={cantiere.email}
+                  onChange={(e) =>
+                    aggiornaCantiereForm(index, "email", e.target.value)
+                  }
+                  style={input}
+                />
               </div>
-            )}
+            ))}
           </div>
-        )
-      })}
+
+          <div style={sideActions}>
+            <button onClick={salvaCliente} style={saveBtn}>
+              💾 Salva cliente
+            </button>
+
+            <button onClick={resetForm} style={cancelBtn}>
+              🧹 Nuovo / pulisci
+            </button>
+
+            <button onClick={() => navigate("/interventi")} style={lightBtnFull}>
+              ↩️ Torna a interventi
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
 const page = {
-  padding: 20,
+  padding: 12,
+  maxWidth: 1600,
+  margin: "0 auto",
+  boxSizing: "border-box",
+}
+
+const topBar = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 12,
+  flexWrap: "wrap",
+}
+
+const topButtons = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+}
+
+const layout = {
+  display: "grid",
+  gridTemplateColumns: "1fr 360px",
+  gap: 14,
+  alignItems: "start",
+}
+
+const leftColumn = {
+  minWidth: 0,
+}
+
+const rightColumn = {
+  position: "sticky",
+  top: 10,
+  background: "#fff",
+  border: "2px solid #1976d2",
+  borderRadius: 12,
+  padding: 12,
+}
+
+const searchBox = {
+  background: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: 10,
+  padding: 10,
+  marginBottom: 10,
 }
 
 const searchInput = {
   width: "100%",
-  marginBottom: 15,
-  padding: 10,
+  padding: 11,
   boxSizing: "border-box",
-}
-
-const formBox = {
   border: "1px solid #ccc",
   borderRadius: 8,
-  padding: 15,
-  marginBottom: 20,
-  background: "#f8f8f8",
+  fontSize: 16,
+}
+
+const countLine = {
+  marginTop: 6,
+  fontSize: 13,
+  color: "#555",
+  fontWeight: "bold",
 }
 
 const input = {
@@ -475,22 +596,47 @@ const input = {
   padding: 10,
   marginBottom: 8,
   boxSizing: "border-box",
+  borderRadius: 7,
+  border: "1px solid #ccc",
 }
 
-const cantieriFormBox = {
-  marginTop: 15,
+const clienteCard = {
+  border: "1px solid #ccc",
+  marginTop: 8,
+  borderRadius: 9,
+  background: "white",
+  overflow: "hidden",
+}
+
+const clienteHeader = {
   padding: 12,
-  border: "1px dashed #999",
-  borderRadius: 8,
-  background: "#fff",
+  background: "#f6f6f6",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
 }
 
-const cantiereFormCard = {
-  border: "1px solid #ddd",
-  borderRadius: 8,
-  padding: 10,
-  marginBottom: 12,
-  background: "#fafafa",
+const smallText = {
+  fontSize: 13,
+  color: "#555",
+  marginTop: 3,
+}
+
+const cardActions = {
+  display: "flex",
+  gap: 6,
+}
+
+const miniBtn = {
+  padding: "7px 9px",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  cursor: "pointer",
+}
+
+const clienteDettagli = {
+  padding: 12,
 }
 
 const buttonRow = {
@@ -500,28 +646,30 @@ const buttonRow = {
   marginTop: 10,
 }
 
-const saveBtn = {
-  padding: "8px 12px",
-  cursor: "pointer",
-  fontWeight: "bold",
-}
-
-const cancelBtn = {
-  padding: "8px 12px",
-  cursor: "pointer",
-}
-
 const editBtn = {
-  padding: "7px 10px",
+  padding: "8px 10px",
   cursor: "pointer",
+  borderRadius: 6,
+  border: "1px solid #ccc",
 }
 
 const deleteBtn = {
-  padding: "7px 10px",
+  padding: "8px 10px",
   cursor: "pointer",
   background: "#ffe0e0",
   border: "1px solid #cc0000",
-  borderRadius: 5,
+  borderRadius: 6,
+}
+
+const cantieriBox = {
+  marginTop: 12,
+  paddingTop: 10,
+  borderTop: "1px solid #ddd",
+}
+
+const cantiereCard = {
+  borderBottom: "1px solid #eee",
+  padding: "8px 0",
 }
 
 const deleteCantiereBtn = {
@@ -532,41 +680,102 @@ const deleteCantiereBtn = {
   borderRadius: 5,
 }
 
-const addBtn = {
-  padding: "8px 12px",
-  cursor: "pointer",
-  width: "100%",
-  marginTop: 5,
-}
-
-const clienteCard = {
-  border: "1px solid #ccc",
-  marginTop: 10,
+const editNotice = {
+  background: "#fff3cd",
+  border: "1px solid #ffeeba",
+  color: "#856404",
+  padding: 8,
   borderRadius: 8,
-  background: "white",
-  overflow: "hidden",
+  marginBottom: 10,
 }
 
-const clienteHeader = {
-  padding: 14,
-  background: "#f1f1f1",
-  cursor: "pointer",
+const cantieriFormBox = {
+  marginTop: 10,
+  padding: 10,
+  border: "1px dashed #999",
+  borderRadius: 8,
+  background: "#fafafa",
+}
+
+const cantieriTitle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
+  marginBottom: 8,
 }
 
-const clienteDettagli = {
-  padding: 12,
+const cantiereFormCard = {
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  padding: 8,
+  marginBottom: 10,
+  background: "#fff",
 }
 
-const cantieriBox = {
-  marginTop: 15,
-  paddingTop: 10,
-  borderTop: "1px solid #ddd",
+const cantiereFormHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 6,
 }
 
-const cantiereCard = {
-  borderBottom: "1px solid #eee",
-  padding: "8px 0",
+const sideActions = {
+  marginTop: 12,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+}
+
+const saveBtn = {
+  background: "#198754",
+  color: "white",
+  border: "none",
+  padding: "12px 14px",
+  borderRadius: 8,
+  fontWeight: "bold",
+  cursor: "pointer",
+  width: "100%",
+}
+
+const cancelBtn = {
+  background: "#f5f5f5",
+  color: "#111",
+  border: "1px solid #ccc",
+  padding: "12px 14px",
+  borderRadius: 8,
+  fontWeight: "bold",
+  cursor: "pointer",
+  width: "100%",
+}
+
+const lightBtn = {
+  background: "#f5f5f5",
+  color: "#111",
+  border: "1px solid #ccc",
+  padding: "9px 12px",
+  borderRadius: 8,
+  fontWeight: "bold",
+  cursor: "pointer",
+}
+
+const lightBtnFull = {
+  ...lightBtn,
+  width: "100%",
+}
+
+const miniAddBtn = {
+  background: "#198754",
+  color: "white",
+  border: "none",
+  padding: "6px 10px",
+  borderRadius: 6,
+  cursor: "pointer",
+}
+
+const miniDangerBtn = {
+  background: "#ffe0e0",
+  border: "1px solid #cc0000",
+  padding: "5px 8px",
+  borderRadius: 6,
+  cursor: "pointer",
 }

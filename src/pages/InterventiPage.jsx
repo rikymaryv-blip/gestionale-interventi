@@ -535,7 +535,23 @@ export default function InterventiPage() {
       return
     }
 
-    alert("✅ Bolla ripristinata")
+    const { error: errorRiga } = await supabase
+      .from("materiali_bollettino")
+      .delete()
+      .eq("id", mat.id)
+
+    if (errorRiga) {
+      console.error(errorRiga)
+      alert("Bolla ripristinata, ma errore eliminazione riferimento: " + errorRiga.message)
+      return
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      materiali: prev.materiali.filter((m) => m.id !== mat.id),
+    }))
+
+    alert("✅ Bolla ripristinata e riferimento eliminato")
   }
 
   function aggiungiMaterialeManuale() {

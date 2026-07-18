@@ -1,44 +1,79 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+
+import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../supabaseClient"
 import * as XLSX from "xlsx"
 
 const serieCivili = ["Living", "Matix", "Linea", "Now", "Altro"]
 
 const scatoleDisponibili = [
-  { codice: "503", moduli: 3, descrizioneSupporto: "Supporto 503", descrizionePlacca: "Placca 503" },
-  { codice: "504", moduli: 4, descrizioneSupporto: "Supporto 504", descrizionePlacca: "Placca 504" },
-  { codice: "506", moduli: 6, descrizioneSupporto: "Supporto 506", descrizionePlacca: "Placca 506" },
-  { codice: "507", moduli: 7, descrizioneSupporto: "Supporto 507", descrizionePlacca: "Placca 507" }
+  {
+    codice: "503",
+    moduli: 3,
+    descrizioneSupporto: "Supporto 503",
+    descrizionePlacca: "Placca 503"
+  },
+  {
+    codice: "504",
+    moduli: 4,
+    descrizioneSupporto: "Supporto 504",
+    descrizionePlacca: "Placca 504"
+  },
+  {
+    codice: "506",
+    moduli: 6,
+    descrizioneSupporto: "Supporto 506",
+    descrizionePlacca: "Placca 506"
+  },
+  {
+    codice: "507",
+    moduli: 7,
+    descrizioneSupporto: "Supporto 507",
+    descrizionePlacca: "Placca 507"
+  }
 ]
+
+function creaId() {
+  return `${Date.now()}_${Math.random().toString(36).slice(2)}`
+}
 
 function creaStanzaVuota(nome = "") {
   return {
-    id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    id: creaId(),
     nome,
-    scatole: { "503": 0, "504": 0, "506": 0, "507": 0 },
+    scatole: {
+      "503": 0,
+      "504": 0,
+      "506": 0,
+      "507": 0
+    },
     punti: []
+  }
+}
+
+function creaRigaSelezione(voce) {
+  return {
+    selezionata: false,
+    quantita: 1,
+    posti: Number(voce.posti_default || voce.posti_fissi || 1),
+    descrizione: ""
   }
 }
 
 export default function PuntiLucePage() {
   const [clienti, setClienti] = useState([])
   const [vociDB, setVociDB] = useState([])
+
   const [clienteId, setClienteId] = useState("")
   const [serie, setSerie] = useState("")
+
   const [stanze, setStanze] = useState([])
   const [stanzaIdCorrente, setStanzaIdCorrente] = useState("")
   const [progettoCaricato, setProgettoCaricato] = useState(false)
   const [ultimoSalvataggio, setUltimoSalvataggio] = useState("")
-  const [ultimoId, setUltimoId] = useState(null)
-  const ultimoRef = useRef(null)
 
-  const [nuovo, setNuovo] = useState({
-    quantita: 1,
-    capitolo: "",
-    tipo: "",
-    posti: 1,
-    descrizione: ""
-  })
+  const [capitoloAperto, setCapitoloAperto] = useState("")
+  const [selezioni, setSelezioni] = useState({})
+  const [messaggio, setMessaggio] = useState("")
 
   useEffect(() => {
     caricaClienti()
@@ -46,29 +81,21 @@ export default function PuntiLucePage() {
   }, [])
 
   useEffect(() => {
-    if (vociDB.length > 0 && !nuovo.capitolo) {
-      const primoCapitolo = vociDB[0].capitolo
-      const primaVoce = vociDB.find(v => v.capitolo === primoCapitolo)
-      setNuovo(prev => ({
-        ...prev,
-        capitolo: primoCapitolo,
-        tipo: primaVoce?.voce || "",
-        posti: primaVoce?.posti_default || 1
-      }))
-    }
-  }, [vociDB])
+    if (!messaggio) return
 
-  useEffect(() => {
-    if (ultimoRef.current) {
-      ultimoRef.current.scrollIntoView({ behavior: "smooth", block: "center" })
-    }
-  }, [ultimoId])
+    const timer = window.setTimeout(() => {
+      setMessaggio("")
+    }, 2500)
+
+    return () => window.clearTimeout(timer)
+  }, [messaggio])
 
   useEffect(() => {
     if (!clienteId || !serie) {
       setStanze([])
       setStanzaIdCorrente("")
       setProgettoCaricato(false)
+      resetInserimentoMateriali()
       return
     }
 
@@ -77,7 +104,10 @@ export default function PuntiLucePage() {
     if (salvato) {
       try {
         const progetto = JSON.parse(salvato)
-        const stanzeSalvate = Array.isArray(progetto.stanze) ? progetto.stanze : []
+        const stanzeSalvate = Array.isArray(progetto.stanze)
+          ? progetto.stanze
+          : []
+
         setStanze(stanzeSalvate)
         setStanzaIdCorrente(stanzeSalvate[0]?.id || "")
       } catch (error) {
@@ -90,21 +120,28 @@ export default function PuntiLucePage() {
       setStanzaIdCorrente("")
     }
 
+    resetInserimentoMateriali()
     setProgettoCaricato(true)
   }, [clienteId, serie])
 
   useEffect(() => {
     if (!progettoCaricato || !clienteId || !serie) return
 
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       localStorage.setItem(
         getStorageKey(clienteId, serie),
-        JSON.stringify({ clienteId, serie, stanze, aggiornatoIl: new Date().toISOString() })
+        JSON.stringify({
+          clienteId,
+          serie,
+          stanze,
+          aggiornatoIl: new Date().toISOString()
+        })
       )
+
       setUltimoSalvataggio(new Date().toLocaleTimeString())
     }, 350)
 
-    return () => clearTimeout(timer)
+    return () => window.clearTimeout(timer)
   }, [stanze, clienteId, serie, progettoCaricato])
 
   async function caricaClienti() {
@@ -140,218 +177,462 @@ export default function PuntiLucePage() {
   }
 
   function getStorageKey(idCliente, nomeSerie) {
-    return `punti_luce_v2_${idCliente}_${nomeSerie}`
+    return `punti_luce_v3_${idCliente}_${nomeSerie}`
   }
 
-  const capitoli = useMemo(
-    () => [...new Set(vociDB.map(v => v.capitolo).filter(Boolean))],
-    [vociDB]
+  const capitoli = useMemo(() => {
+    return [...new Set(vociDB.map((voce) => voce.capitolo).filter(Boolean))]
+  }, [vociDB])
+
+  const stanzaCorrente =
+    stanze.find(
+      (stanza) => String(stanza.id) === String(stanzaIdCorrente)
+    ) || null
+
+  const clienteSelezionato = clienti.find(
+    (cliente) => String(cliente.id) === String(clienteId)
   )
 
-  const vociCapitolo = vociDB.filter(v => v.capitolo === nuovo.capitolo)
-  const stanzaCorrente = stanze.find(s => String(s.id) === String(stanzaIdCorrente)) || null
-  const clienteSelezionato = clienti.find(c => String(c.id) === String(clienteId))
+  function labelCapitolo(capitolo) {
+    const etichette = {
+      punti_luce: "💡 Punti luce",
+      prese: "🔌 Prese",
+      comandi: "🔘 Comandi",
+      predisposizioni: "📦 Predisposizioni",
+      altro: "🧰 Altro"
+    }
 
-  function getVoceConfigDaNuovo() {
-    return vociDB.find(v => v.capitolo === nuovo.capitolo && v.voce === nuovo.tipo)
+    return (
+      etichette[capitolo] ||
+      String(capitolo || "")
+        .replaceAll("_", " ")
+        .toUpperCase()
+    )
   }
 
   function getVoceConfigDaPunto(punto) {
-    return vociDB.find(v => v.capitolo === punto.capitolo && v.voce === punto.tipo)
-  }
-
-  function labelCapitolo(capitolo) {
-    return String(capitolo || "").replaceAll("_", " ").toUpperCase()
-  }
-
-  function postiEffettivi() {
-    const voce = getVoceConfigDaNuovo()
-    if (!voce) return 1
-    if (voce.richiede_posti) return Number(nuovo.posti || voce.posti_default || 1)
-    return Number(voce.posti_fissi || 1)
-  }
-
-  function descrizioneAutomatica() {
-    const voce = getVoceConfigDaNuovo()
-    if (!voce) return ""
-    if (voce.richiede_posti) return `${voce.voce} da ${postiEffettivi()} posti`
-    return voce.voce
+    return vociDB.find(
+      (voce) =>
+        voce.capitolo === punto.capitolo &&
+        voce.voce === punto.tipo
+    )
   }
 
   function calcolaModuliDaScatole(scatole = {}) {
-    return scatoleDisponibili.reduce(
-      (tot, s) => tot + Number(scatole[s.codice] || 0) * s.moduli,
-      0
-    )
+    return scatoleDisponibili.reduce((totale, scatola) => {
+      return (
+        totale +
+        Number(scatole[scatola.codice] || 0) * scatola.moduli
+      )
+    }, 0)
   }
 
   function calcolaModuliPunto(punto) {
     const config = getVoceConfigDaPunto(punto)
+
     if (!config) return 0
-    const qta = Number(punto.quantita || 0)
+
+    const quantita = Number(punto.quantita || 0)
+
     if (config.richiede_posti) {
-      return qta * Number(punto.posti || config.posti_default || 1)
+      return (
+        quantita *
+        Number(punto.posti || config.posti_default || 1)
+      )
     }
-    return qta * Number(config.moduli || 0)
+
+    return quantita * Number(config.moduli || 0)
   }
 
   function calcolaModuliUsati(punti = []) {
-    return punti.reduce((tot, p) => tot + calcolaModuliPunto(p), 0)
+    return punti.reduce((totale, punto) => {
+      return totale + calcolaModuliPunto(punto)
+    }, 0)
   }
 
-  const moduliTotaliCorrente = stanzaCorrente ? calcolaModuliDaScatole(stanzaCorrente.scatole) : 0
-  const moduliUsatiCorrente = stanzaCorrente ? calcolaModuliUsati(stanzaCorrente.punti) : 0
-  const moduliRimastiCorrente = moduliTotaliCorrente - moduliUsatiCorrente
+  const moduliTotaliCorrente = stanzaCorrente
+    ? calcolaModuliDaScatole(stanzaCorrente.scatole)
+    : 0
+
+  const moduliUsatiCorrente = stanzaCorrente
+    ? calcolaModuliUsati(stanzaCorrente.punti)
+    : 0
+
+  const moduliRimastiCorrente =
+    moduliTotaliCorrente - moduliUsatiCorrente
 
   function aggiornaStanzaCorrente(modifica) {
     if (!stanzaCorrente) return
-    setStanze(prev => prev.map(stanza =>
-      String(stanza.id) === String(stanzaCorrente.id)
-        ? { ...stanza, ...modifica }
-        : stanza
-    ))
+
+    setStanze((precedenti) =>
+      precedenti.map((stanza) =>
+        String(stanza.id) === String(stanzaCorrente.id)
+          ? { ...stanza, ...modifica }
+          : stanza
+      )
+    )
   }
 
   function cambiaNomeStanza(nome) {
     aggiornaStanzaCorrente({ nome })
   }
 
-  function aggiornaScatola(tipo, valore) {
+  function aggiornaScatola(codice, valore) {
     if (!stanzaCorrente) return
+
     aggiornaStanzaCorrente({
       scatole: {
         ...stanzaCorrente.scatole,
-        [tipo]: Math.max(0, Number(valore || 0))
+        [codice]: Math.max(0, Number(valore || 0))
       }
     })
   }
 
-  function cambiaCapitolo(capitolo) {
-    const primaVoce = vociDB.find(v => v.capitolo === capitolo)
-    setNuovo(prev => ({
-      ...prev,
-      capitolo,
-      tipo: primaVoce?.voce || "",
-      posti: primaVoce?.posti_default || 1,
-      descrizione: ""
+  function variaScatola(codice, variazione) {
+    const attuale = Number(
+      stanzaCorrente?.scatole?.[codice] || 0
+    )
+
+    aggiornaScatola(codice, attuale + variazione)
+  }
+
+  function resetInserimentoMateriali() {
+    setCapitoloAperto("")
+    setSelezioni({})
+  }
+
+  function preparaCapitolo(capitolo) {
+    const vociCapitolo = vociDB.filter(
+      (voce) => voce.capitolo === capitolo
+    )
+
+    setSelezioni((precedenti) => {
+      const nuove = { ...precedenti }
+
+      vociCapitolo.forEach((voce) => {
+        if (!nuove[voce.id]) {
+          nuove[voce.id] = creaRigaSelezione(voce)
+        }
+      })
+
+      return nuove
+    })
+  }
+
+  function apriChiudiCapitolo(capitolo) {
+    if (capitoloAperto === capitolo) {
+      setCapitoloAperto("")
+      return
+    }
+
+    preparaCapitolo(capitolo)
+    setCapitoloAperto(capitolo)
+  }
+
+  function aggiornaSelezione(voce, campo, valore) {
+    setSelezioni((precedenti) => ({
+      ...precedenti,
+      [voce.id]: {
+        ...(precedenti[voce.id] || creaRigaSelezione(voce)),
+        [campo]: valore
+      }
     }))
   }
 
-  function cambiaTipo(tipo) {
-    const voce = vociDB.find(v => v.capitolo === nuovo.capitolo && v.voce === tipo)
-    setNuovo(prev => ({
-      ...prev,
-      tipo,
-      posti: voce?.posti_default || 1,
-      descrizione: ""
-    }))
+  function descrizioneAutomatica(voce, riga) {
+    const descrizioneManuale = String(
+      riga.descrizione || ""
+    ).trim()
+
+    if (descrizioneManuale) {
+      return descrizioneManuale
+    }
+
+    if (voce.richiede_posti) {
+      return `${voce.voce} da ${Number(
+        riga.posti || voce.posti_default || 1
+      )} posti`
+    }
+
+    return voce.voce
+  }
+
+  function importaVociCapitolo(capitolo) {
+    if (!clienteId) {
+      alert("Seleziona prima il cliente")
+      return
+    }
+
+    if (!serie) {
+      alert("Seleziona prima la serie civile")
+      return
+    }
+
+    if (!stanzaCorrente) {
+      alert("Crea o seleziona una stanza")
+      return
+    }
+
+    if (!stanzaCorrente.nome.trim()) {
+      alert("Inserisci il nome della stanza")
+      return
+    }
+
+    const vociCapitolo = vociDB.filter(
+      (voce) => voce.capitolo === capitolo
+    )
+
+    const selezionate = vociCapitolo.filter(
+      (voce) => selezioni[voce.id]?.selezionata
+    )
+
+    if (selezionate.length === 0) {
+      alert("Seleziona almeno una voce")
+      return
+    }
+
+    const nuoviPunti = []
+    let quantitaTotaleImportata = 0
+
+    selezionate.forEach((voce) => {
+      const riga =
+        selezioni[voce.id] || creaRigaSelezione(voce)
+
+      const quantita = Math.max(
+        1,
+        Number(riga.quantita || 1)
+      )
+
+      const posti = voce.richiede_posti
+        ? Math.max(
+            1,
+            Number(riga.posti || voce.posti_default || 1)
+          )
+        : Number(voce.posti_fissi || 1)
+
+      if (
+        String(voce.voce || "").toLowerCase() === "altro" &&
+        !String(riga.descrizione || "").trim()
+      ) {
+        return
+      }
+
+      const descrizione = descrizioneAutomatica(voce, riga)
+
+      nuoviPunti.push({
+        id: creaId(),
+        quantita,
+        capitolo,
+        tipo: voce.voce,
+        posti,
+        descrizione
+      })
+
+      quantitaTotaleImportata += quantita
+    })
+
+    if (nuoviPunti.length === 0) {
+      alert("Completa le descrizioni richieste")
+      return
+    }
+
+    const puntiAggiornati = [...stanzaCorrente.punti]
+
+    nuoviPunti.forEach((nuovoPunto) => {
+      const esistente = puntiAggiornati.find(
+        (punto) =>
+          punto.capitolo === nuovoPunto.capitolo &&
+          punto.tipo === nuovoPunto.tipo &&
+          Number(punto.posti) === Number(nuovoPunto.posti) &&
+          punto.descrizione === nuovoPunto.descrizione
+      )
+
+      if (esistente) {
+        esistente.quantita =
+          Number(esistente.quantita) +
+          Number(nuovoPunto.quantita)
+      } else {
+        puntiAggiornati.push(nuovoPunto)
+      }
+    })
+
+    aggiornaStanzaCorrente({
+      punti: puntiAggiornati
+    })
+
+    setSelezioni((precedenti) => {
+      const nuove = { ...precedenti }
+
+      vociCapitolo.forEach((voce) => {
+        nuove[voce.id] = creaRigaSelezione(voce)
+      })
+
+      return nuove
+    })
+
+    setMessaggio(
+      `Importate ${nuoviPunti.length} voci (${quantitaTotaleImportata} elementi) in ${labelCapitolo(
+        capitolo
+      )}`
+    )
+  }
+
+  function totaleQuantitaCapitolo(capitolo) {
+    if (!stanzaCorrente) return 0
+
+    return stanzaCorrente.punti
+      .filter((punto) => punto.capitolo === capitolo)
+      .reduce(
+        (totale, punto) =>
+          totale + Number(punto.quantita || 0),
+        0
+      )
+  }
+
+  function capitoloUsato(capitolo) {
+    return totaleQuantitaCapitolo(capitolo) > 0
   }
 
   function nuovaStanza() {
-    if (!clienteId) return alert("Seleziona prima il cliente")
-    if (!serie) return alert("Seleziona prima la serie civile")
-
-    const nome = window.prompt("Nome della nuova stanza:")
-    if (!nome?.trim()) return
-
-    const nuova = creaStanzaVuota(nome.trim())
-    setStanze(prev => [...prev, nuova])
-    setStanzaIdCorrente(nuova.id)
-    window.scrollTo({ top: 0, behavior: "smooth" })
-  }
-
-  function duplicaStanza(stanza) {
-    if (!stanza) return
-
-    const nome = window.prompt("Nome della stanza duplicata:", `${stanza.nome} copia`)
-    if (!nome?.trim()) return
-
-    const copia = {
-      ...JSON.parse(JSON.stringify(stanza)),
-      id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      nome: nome.trim(),
-      punti: (stanza.punti || []).map(p => ({
-        ...p,
-        id: `${Date.now()}_${Math.random().toString(36).slice(2)}`
-      }))
+    if (!clienteId) {
+      alert("Seleziona prima il cliente")
+      return
     }
 
-    const indice = stanze.findIndex(s => String(s.id) === String(stanza.id))
-    const nuove = [...stanze]
-    nuove.splice(indice + 1, 0, copia)
-    setStanze(nuove)
-    setStanzaIdCorrente(copia.id)
+    if (!serie) {
+      alert("Seleziona prima la serie civile")
+      return
+    }
+
+    const numero = stanze.length + 1
+    const nuova = creaStanzaVuota(`Nuova stanza ${numero}`)
+
+    setStanze((precedenti) => [...precedenti, nuova])
+    setStanzaIdCorrente(nuova.id)
+    resetInserimentoMateriali()
+    setMessaggio("Nuova stanza pronta")
+  }
+
+  function salvaENuovaStanza() {
+    if (!stanzaCorrente) {
+      nuovaStanza()
+      return
+    }
+
+    if (!stanzaCorrente.nome.trim()) {
+      alert("Inserisci il nome della stanza")
+      return
+    }
+
+    const numero = stanze.length + 1
+    const nuova = creaStanzaVuota(`Nuova stanza ${numero}`)
+
+    setStanze((precedenti) => [...precedenti, nuova])
+    setStanzaIdCorrente(nuova.id)
+    resetInserimentoMateriali()
+    setMessaggio(
+      `Stanza "${stanzaCorrente.nome}" salvata. Nuova stanza pronta.`
+    )
+  }
+
+  function selezionaStanza(id) {
+    setStanzaIdCorrente(id)
+    resetInserimentoMateriali()
   }
 
   function eliminaStanza(stanza) {
     if (!stanza) return
-    if (!window.confirm(`Vuoi eliminare la stanza "${stanza.nome}"?`)) return
 
-    const nuove = stanze.filter(s => String(s.id) !== String(stanza.id))
+    if (
+      !window.confirm(
+        `Vuoi eliminare la stanza "${stanza.nome}"?`
+      )
+    ) {
+      return
+    }
+
+    const nuove = stanze.filter(
+      (elemento) =>
+        String(elemento.id) !== String(stanza.id)
+    )
+
     setStanze(nuove)
 
-    if (String(stanzaIdCorrente) === String(stanza.id)) {
+    if (
+      String(stanzaIdCorrente) === String(stanza.id)
+    ) {
       setStanzaIdCorrente(nuove[0]?.id || "")
+      resetInserimentoMateriali()
     }
   }
 
-  function spostaStanza(stanzaId, direzione) {
-    const indice = stanze.findIndex(s => String(s.id) === String(stanzaId))
-    if (indice < 0) return
+  function cambiaQuantitaPunto(id, variazione) {
+    if (!stanzaCorrente) return
 
-    const nuovoIndice = direzione === "su" ? indice - 1 : indice + 1
-    if (nuovoIndice < 0 || nuovoIndice >= stanze.length) return
-
-    const nuove = [...stanze]
-    const [spostata] = nuove.splice(indice, 1)
-    nuove.splice(nuovoIndice, 0, spostata)
-    setStanze(nuove)
-  }
-
-  function aggiungiPunto() {
-    if (!clienteId) return alert("Seleziona cliente")
-    if (!serie) return alert("Seleziona serie")
-    if (!stanzaCorrente) return alert("Crea o seleziona una stanza")
-    if (!stanzaCorrente.nome.trim()) return alert("Inserisci il nome della stanza")
-    if (!nuovo.capitolo || !nuovo.tipo) return alert("Seleziona capitolo e voce")
-
-    const punto = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      quantita: Math.max(1, Number(nuovo.quantita || 1)),
-      capitolo: nuovo.capitolo,
-      tipo: nuovo.tipo,
-      posti: postiEffettivi(),
-      descrizione: nuovo.descrizione.trim() || descrizioneAutomatica()
-    }
-
-    const moduliNuovo = calcolaModuliPunto(punto)
-    if (moduliNuovo > moduliRimastiCorrente) {
-      return alert(`Moduli insufficienti. Disponibili: ${moduliRimastiCorrente}, richiesti: ${moduliNuovo}`)
-    }
-
-    aggiornaStanzaCorrente({ punti: [...stanzaCorrente.punti, punto] })
-    setUltimoId(punto.id)
-    setNuovo(prev => ({ ...prev, quantita: 1, descrizione: "" }))
+    aggiornaStanzaCorrente({
+      punti: stanzaCorrente.punti
+        .map((punto) =>
+          String(punto.id) === String(id)
+            ? {
+                ...punto,
+                quantita:
+                  Number(punto.quantita || 0) + variazione
+              }
+            : punto
+        )
+        .filter(
+          (punto) => Number(punto.quantita || 0) > 0
+        )
+    })
   }
 
   function eliminaPunto(id) {
     if (!stanzaCorrente) return
+
     aggiornaStanzaCorrente({
-      punti: stanzaCorrente.punti.filter(p => String(p.id) !== String(id))
+      punti: stanzaCorrente.punti.filter(
+        (punto) => String(punto.id) !== String(id)
+      )
     })
   }
 
   const riepilogoGenerale = useMemo(() => {
-    return stanze.reduce((tot, stanza) => {
-      tot.moduliTotali += calcolaModuliDaScatole(stanza.scatole)
-      tot.moduliUsati += calcolaModuliUsati(stanza.punti)
-      tot.numeroPunti += (stanza.punti || []).reduce((s, p) => s + Number(p.quantita || 0), 0)
-      tot.numeroScatole += scatoleDisponibili.reduce(
-        (s, box) => s + Number(stanza.scatole?.[box.codice] || 0),
-        0
-      )
-      return tot
-    }, { moduliTotali: 0, moduliUsati: 0, numeroPunti: 0, numeroScatole: 0 })
+    return stanze.reduce(
+      (totale, stanza) => {
+        totale.moduliTotali += calcolaModuliDaScatole(
+          stanza.scatole
+        )
+
+        totale.moduliUsati += calcolaModuliUsati(
+          stanza.punti
+        )
+
+        totale.numeroPunti += (
+          stanza.punti || []
+        ).reduce(
+          (somma, punto) =>
+            somma + Number(punto.quantita || 0),
+          0
+        )
+
+        totale.numeroScatole += scatoleDisponibili.reduce(
+          (somma, scatola) =>
+            somma +
+            Number(
+              stanza.scatole?.[scatola.codice] || 0
+            ),
+          0
+        )
+
+        return totale
+      },
+      {
+        moduliTotali: 0,
+        moduliUsati: 0,
+        numeroPunti: 0,
+        numeroScatole: 0
+      }
+    )
   }, [stanze, vociDB])
 
   const distintaMateriali = useMemo(() => {
@@ -359,157 +640,291 @@ export default function PuntiLucePage() {
 
     function aggiungi(descrizione, quantita, gruppo) {
       const qta = Number(quantita || 0)
+
       if (!descrizione || qta <= 0) return
-      const key = `${gruppo}__${descrizione}`
-      if (!mappa.has(key)) mappa.set(key, { gruppo, descrizione, quantita: 0 })
-      mappa.get(key).quantita += qta
+
+      const chiave = `${gruppo}__${descrizione}`
+
+      if (!mappa.has(chiave)) {
+        mappa.set(chiave, {
+          gruppo,
+          descrizione,
+          quantita: 0
+        })
+      }
+
+      mappa.get(chiave).quantita += qta
     }
 
-    stanze.forEach(stanza => {
-      scatoleDisponibili.forEach(s => {
-        const qta = Number(stanza.scatole?.[s.codice] || 0)
-        aggiungi(s.descrizioneSupporto, qta, "MATERIALI BASE")
-        aggiungi(s.descrizionePlacca, qta, "MATERIALI BASE")
+    stanze.forEach((stanza) => {
+      scatoleDisponibili.forEach((scatola) => {
+        const quantita = Number(
+          stanza.scatole?.[scatola.codice] || 0
+        )
+
+        aggiungi(
+          scatola.descrizioneSupporto,
+          quantita,
+          "MATERIALI BASE"
+        )
+
+        aggiungi(
+          scatola.descrizionePlacca,
+          quantita,
+          "MATERIALI BASE"
+        )
       })
 
-      ;(stanza.punti || []).forEach(p => {
-        aggiungi(p.descrizione || p.tipo, Number(p.quantita || 0), labelCapitolo(p.capitolo))
+      ;(stanza.punti || []).forEach((punto) => {
+        aggiungi(
+          punto.descrizione || punto.tipo,
+          punto.quantita,
+          labelCapitolo(punto.capitolo)
+        )
       })
     })
 
     return [...mappa.values()].sort((a, b) => {
-      if (a.gruppo !== b.gruppo) return a.gruppo.localeCompare(b.gruppo)
+      if (a.gruppo !== b.gruppo) {
+        return a.gruppo.localeCompare(b.gruppo)
+      }
+
       return a.descrizione.localeCompare(b.descrizione)
     })
   }, [stanze, vociDB])
 
   function esportaExcel() {
-    if (!clienteId || !serie) return alert("Seleziona cliente e serie")
-    if (stanze.length === 0) return alert("Non ci sono stanze da esportare")
+    if (!clienteId || !serie) {
+      alert("Seleziona cliente e serie")
+      return
+    }
 
-    const rows = []
-    rows.push(["PROGETTO PUNTI LUCE"])
-    rows.push(["Cliente", clienteSelezionato?.nome || ""])
-    rows.push(["Serie civile", serie])
-    rows.push(["Data esportazione", new Date().toLocaleDateString()])
-    rows.push([])
+    if (stanze.length === 0) {
+      alert("Non ci sono stanze da esportare")
+      return
+    }
+
+    const righe = []
+
+    righe.push(["PROGETTO PUNTI LUCE"])
+    righe.push([
+      "Cliente",
+      clienteSelezionato?.nome || ""
+    ])
+    righe.push(["Serie civile", serie])
+    righe.push([
+      "Data esportazione",
+      new Date().toLocaleDateString()
+    ])
+    righe.push([])
 
     stanze.forEach((stanza, indice) => {
-      rows.push([`STANZA ${indice + 1}`, stanza.nome])
-      rows.push(["SCATOLE"])
-      rows.push(["Tipo", "Quantità", "Moduli totali"])
+      righe.push([`STANZA ${indice + 1}`, stanza.nome])
+      righe.push(["SCATOLE"])
+      righe.push([
+        "Tipo",
+        "Quantità",
+        "Moduli totali"
+      ])
 
-      scatoleDisponibili.forEach(s => {
-        const qta = Number(stanza.scatole?.[s.codice] || 0)
-        if (qta > 0) rows.push([s.codice, qta, qta * s.moduli])
+      scatoleDisponibili.forEach((scatola) => {
+        const quantita = Number(
+          stanza.scatole?.[scatola.codice] || 0
+        )
+
+        if (quantita > 0) {
+          righe.push([
+            scatola.codice,
+            quantita,
+            quantita * scatola.moduli
+          ])
+        }
       })
 
-      rows.push([])
-      rows.push(["PUNTI LUCE"])
-      rows.push(["Capitolo", "Quantità", "Descrizione", "Posti", "Moduli"])
+      righe.push([])
+      righe.push(["PUNTI LUCE"])
+      righe.push([
+        "Capitolo",
+        "Quantità",
+        "Descrizione",
+        "Posti",
+        "Moduli"
+      ])
 
-      ;(stanza.punti || []).forEach(p => {
-        rows.push([
-          labelCapitolo(p.capitolo),
-          Number(p.quantita || 0),
-          p.descrizione || "",
-          Number(p.posti || 0),
-          calcolaModuliPunto(p)
+      ;(stanza.punti || []).forEach((punto) => {
+        righe.push([
+          labelCapitolo(punto.capitolo),
+          Number(punto.quantita || 0),
+          punto.descrizione || "",
+          Number(punto.posti || 0),
+          calcolaModuliPunto(punto)
         ])
       })
 
-      rows.push([])
-      rows.push(["Riepilogo stanza", "", "", "Moduli totali", calcolaModuliDaScatole(stanza.scatole)])
-      rows.push(["", "", "", "Moduli usati", calcolaModuliUsati(stanza.punti)])
-      rows.push(["", "", "", "Moduli rimasti", calcolaModuliDaScatole(stanza.scatole) - calcolaModuliUsati(stanza.punti)])
-      rows.push([])
-      rows.push([])
+      righe.push([])
+      righe.push([])
     })
 
-    rows.push(["DISTINTA MATERIALI"])
-    rows.push(["Gruppo", "Descrizione", "Quantità"])
-    distintaMateriali.forEach(v => rows.push([v.gruppo, v.descrizione, v.quantita]))
+    righe.push(["DISTINTA MATERIALI"])
+    righe.push([
+      "Gruppo",
+      "Descrizione",
+      "Quantità"
+    ])
 
-    rows.push([])
-    rows.push(["RIEPILOGO GENERALE"])
-    rows.push(["Stanze", stanze.length])
-    rows.push(["Scatole", riepilogoGenerale.numeroScatole])
-    rows.push(["Punti", riepilogoGenerale.numeroPunti])
-    rows.push(["Moduli totali", riepilogoGenerale.moduliTotali])
-    rows.push(["Moduli usati", riepilogoGenerale.moduliUsati])
-    rows.push(["Moduli rimasti", riepilogoGenerale.moduliTotali - riepilogoGenerale.moduliUsati])
+    distintaMateriali.forEach((voce) => {
+      righe.push([
+        voce.gruppo,
+        voce.descrizione,
+        voce.quantita
+      ])
+    })
 
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    ws["!cols"] = [{ wch: 24 }, { wch: 42 }, { wch: 15 }, { wch: 18 }, { wch: 15 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Punti luce")
+    const foglio = XLSX.utils.aoa_to_sheet(righe)
 
-    const nomeCliente = String(clienteSelezionato?.nome || "cliente")
+    foglio["!cols"] = [
+      { wch: 24 },
+      { wch: 42 },
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 15 }
+    ]
+
+    const file = XLSX.utils.book_new()
+
+    XLSX.utils.book_append_sheet(
+      file,
+      foglio,
+      "Punti luce"
+    )
+
+    const nomeCliente = String(
+      clienteSelezionato?.nome || "cliente"
+    )
       .replace(/[\\/:*?"<>|]/g, "_")
       .trim()
 
-    XLSX.writeFile(wb, `punti_luce_${nomeCliente}_${serie}.xlsx`)
+    XLSX.writeFile(
+      file,
+      `punti_luce_${nomeCliente}_${serie}.xlsx`
+    )
   }
 
   function cancellaProgetto() {
     if (!clienteId || !serie) return
-    const conferma = window.prompt("Per cancellare tutto il progetto scrivi CANCELLA")
+
+    const conferma = window.prompt(
+      "Per cancellare tutto il progetto scrivi CANCELLA"
+    )
+
     if (conferma !== "CANCELLA") return
 
-    localStorage.removeItem(getStorageKey(clienteId, serie))
+    localStorage.removeItem(
+      getStorageKey(clienteId, serie)
+    )
+
     setStanze([])
     setStanzaIdCorrente("")
     setUltimoSalvataggio("")
+    resetInserimentoMateriali()
+
     alert("Progetto cancellato")
   }
 
-  const input = {
-    width: "100%",
-    padding: 7,
-    border: "1px solid #ccc",
-    borderRadius: 5,
-    boxSizing: "border-box"
-  }
-
-  const box = {
-    border: "1px solid #ccc",
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 10,
-    background: "#fafafa"
-  }
-
-  const th = { border: "1px solid #ccc", padding: 7, background: "#eee", textAlign: "left" }
-  const td = { border: "1px solid #ccc", padding: 7 }
+  const vociCapitoloAperto = vociDB.filter(
+    (voce) => voce.capitolo === capitoloAperto
+  )
 
   return (
-    <div style={{ padding: 15, maxWidth: 1400, margin: "auto" }}>
-      <h1>💡 Progetto Punti Luce</h1>
+    <div style={styles.pagina}>
+      <h1 style={{ marginTop: 0 }}>
+        💡 Progetto Punti Luce
+      </h1>
 
-      <div style={box}>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(250px,1fr) minmax(220px,1fr)", gap: 10 }}>
+      {messaggio && (
+        <div style={styles.messaggio}>
+          {messaggio}
+        </div>
+      )}
+
+      <div style={styles.box}>
+        <div style={styles.grigliaDue}>
           <div>
-            <label>Cliente</label>
-            <select value={clienteId} onChange={e => setClienteId(e.target.value)} style={input}>
-              <option value="">-- seleziona cliente --</option>
-              {clienti.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            <label style={styles.label}>Cliente</label>
+
+            <select
+              value={clienteId}
+              onChange={(evento) =>
+                setClienteId(evento.target.value)
+              }
+              style={styles.input}
+            >
+              <option value="">
+                -- seleziona cliente --
+              </option>
+
+              {clienti.map((cliente) => (
+                <option
+                  key={cliente.id}
+                  value={cliente.id}
+                >
+                  {cliente.nome}
+                </option>
+              ))}
             </select>
           </div>
 
           <div>
-            <label>Serie civile</label>
-            <select value={serie} onChange={e => setSerie(e.target.value)} style={input}>
-              <option value="">-- seleziona serie --</option>
-              {serieCivili.map(s => <option key={s} value={s}>{s}</option>)}
+            <label style={styles.label}>
+              Serie civile
+            </label>
+
+            <select
+              value={serie}
+              onChange={(evento) =>
+                setSerie(evento.target.value)
+              }
+              style={styles.input}
+            >
+              <option value="">
+                -- seleziona serie --
+              </option>
+
+              {serieCivili.map((nomeSerie) => (
+                <option
+                  key={nomeSerie}
+                  value={nomeSerie}
+                >
+                  {nomeSerie}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
-        <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button onClick={nuovaStanza} style={btnVerde}>➕ Nuova stanza</button>
-          <button onClick={esportaExcel} style={btnBlu}>📊 Esporta Excel</button>
-          <button onClick={cancellaProgetto} style={btnRosso}>🗑 Cancella progetto</button>
-          <span style={{ color: "#666" }}>
+        <div style={styles.rigaAzioni}>
+          <button
+            onClick={nuovaStanza}
+            style={styles.btnVerde}
+          >
+            ➕ Nuova stanza
+          </button>
+
+          <button
+            onClick={esportaExcel}
+            style={styles.btnBlu}
+          >
+            📊 Esporta Excel
+          </button>
+
+          <button
+            onClick={cancellaProgetto}
+            style={styles.btnRosso}
+          >
+            🗑 Cancella progetto
+          </button>
+
+          <span style={styles.testoSecondario}>
             {clienteId && serie
               ? ultimoSalvataggio
                 ? `✅ Salvato automaticamente alle ${ultimoSalvataggio}`
@@ -517,237 +932,1075 @@ export default function PuntiLucePage() {
               : "Seleziona cliente e serie"}
           </span>
         </div>
-
-        <div style={{ marginTop: 8, padding: 8, borderRadius: 6, background: "#fff3cd", border: "1px solid #ffecb5" }}>
-          Il salvataggio automatico viene mantenuto nel browser di questo dispositivo.
-        </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0,1fr)", gap: 12, alignItems: "start" }}>
-        <div style={{ ...box, position: "sticky", top: 10, maxHeight: "calc(100vh - 30px)", overflowY: "auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={{ margin: 0 }}>🏠 Stanze</h3>
-            <button onClick={nuovaStanza} style={btnVerdePiccolo}>➕</button>
-          </div>
+      <details style={styles.tendinaStanze}>
+        <summary style={styles.summaryStanze}>
+          🏠 Stanze salvate ({stanze.length})
+        </summary>
 
-          {!clienteId || !serie ? (
-            <div style={{ marginTop: 12, color: "#666" }}>Seleziona cliente e serie civile.</div>
-          ) : stanze.length === 0 ? (
-            <div style={{ marginTop: 12, color: "#666" }}>Nessuna stanza. Premi “Nuova stanza”.</div>
+        <div style={styles.contenutoTendina}>
+          {stanze.length === 0 ? (
+            <div style={styles.vuoto}>
+              Nessuna stanza salvata.
+            </div>
           ) : (
-            <div style={{ marginTop: 10 }}>
-              {stanze.map((stanza, indice) => {
-                const selezionata = String(stanza.id) === String(stanzaIdCorrente)
-                return (
-                  <div key={stanza.id} style={{
-                    border: selezionata ? "2px solid #0d6efd" : "1px solid #ccc",
-                    background: selezionata ? "#e7f1ff" : "white",
-                    borderRadius: 7,
-                    padding: 8,
-                    marginBottom: 8
-                  }}>
+            stanze.map((stanza, indice) => {
+              const selezionata =
+                String(stanza.id) ===
+                String(stanzaIdCorrente)
+
+              const totali = calcolaModuliDaScatole(
+                stanza.scatole
+              )
+
+              const usati = calcolaModuliUsati(
+                stanza.punti
+              )
+
+              return (
+                <div
+                  key={stanza.id}
+                  style={{
+                    ...styles.rigaStanzaSalvata,
+                    background: selezionata
+                      ? "#e7f1ff"
+                      : "white",
+                    borderColor: selezionata
+                      ? "#0d6efd"
+                      : "#d0d5dd"
+                  }}
+                >
+                  <button
+                    onClick={() =>
+                      selezionaStanza(stanza.id)
+                    }
+                    style={styles.btnNomeStanza}
+                  >
+                    {indice + 1}.{" "}
+                    {stanza.nome || "Stanza senza nome"}
+
+                    <small style={styles.dettaglioStanza}>
+                      {usati}/{totali} moduli
+                    </small>
+                  </button>
+
+                  <button
+                    onClick={() => eliminaStanza(stanza)}
+                    style={styles.btnRossoPiccolo}
+                  >
+                    Elimina
+                  </button>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </details>
+
+      {!stanzaCorrente ? (
+        <div style={styles.boxCentrale}>
+          <h3>Nessuna stanza selezionata</h3>
+
+          <p>
+            Seleziona cliente e serie, poi crea una
+            nuova stanza.
+          </p>
+
+          <button
+            onClick={nuovaStanza}
+            style={styles.btnVerde}
+          >
+            ➕ Nuova stanza
+          </button>
+        </div>
+      ) : (
+        <>
+          <div style={styles.box}>
+            <div style={styles.rigaNomeModuli}>
+              <div>
+                <label style={styles.label}>
+                  Nome stanza
+                </label>
+
+                <input
+                  value={stanzaCorrente.nome}
+                  onChange={(evento) =>
+                    cambiaNomeStanza(evento.target.value)
+                  }
+                  style={styles.input}
+                />
+              </div>
+
+              <MiniBox
+                titolo="Totali"
+                valore={moduliTotaliCorrente}
+              />
+
+              <MiniBox
+                titolo="Inseriti"
+                valore={moduliUsatiCorrente}
+              />
+
+              <MiniBox
+                titolo="Rimasti"
+                valore={moduliRimastiCorrente}
+                danger={moduliRimastiCorrente < 0}
+                ok={
+                  moduliRimastiCorrente === 0 &&
+                  moduliTotaliCorrente > 0
+                }
+              />
+            </div>
+
+            <div style={styles.grigliaScatole}>
+              {scatoleDisponibili.map((scatola) => (
+                <div
+                  key={scatola.codice}
+                  style={styles.boxScatola}
+                >
+                  <div style={styles.titoloScatola}>
+                    {scatola.codice}
+                    <span style={styles.testoSecondario}>
+                      {scatola.moduli} moduli
+                    </span>
+                  </div>
+
+                  <div style={styles.controlloQuantita}>
                     <button
-                      onClick={() => setStanzaIdCorrente(stanza.id)}
-                      style={{ width: "100%", border: "none", background: "transparent", textAlign: "left", cursor: "pointer", padding: 0, fontWeight: selezionata ? "bold" : "normal" }}
+                      onClick={() =>
+                        variaScatola(
+                          scatola.codice,
+                          -1
+                        )
+                      }
+                      style={styles.btnMeno}
                     >
-                      {indice + 1}. {stanza.nome || "Stanza senza nome"}
+                      −
                     </button>
 
-                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
-                      <button onClick={() => spostaStanza(stanza.id, "su")} disabled={indice === 0}>↑</button>
-                      <button onClick={() => spostaStanza(stanza.id, "giu")} disabled={indice === stanze.length - 1}>↓</button>
-                      <button onClick={() => duplicaStanza(stanza)}>📋</button>
-                      <button onClick={() => eliminaStanza(stanza)} style={{ background: "#dc3545", color: "white", border: "none", borderRadius: 4 }}>🗑</button>
-                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={
+                        stanzaCorrente.scatole?.[
+                          scatola.codice
+                        ] || 0
+                      }
+                      onChange={(evento) =>
+                        aggiornaScatola(
+                          scatola.codice,
+                          evento.target.value
+                        )
+                      }
+                      style={styles.inputQuantita}
+                    />
+
+                    <button
+                      onClick={() =>
+                        variaScatola(
+                          scatola.codice,
+                          1
+                        )
+                      }
+                      style={styles.btnPiu}
+                    >
+                      +
+                    </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.box}>
+            <h2 style={{ marginTop: 0 }}>
+              Inserimento materiali
+            </h2>
+
+            <div style={styles.testoSecondario}>
+              Apri un capitolo, seleziona tutte le voci,
+              inserisci le quantità e importale insieme.
+            </div>
+
+            <div style={styles.grigliaCapitoli}>
+              {capitoli.map((capitolo) => {
+                const usato = capitoloUsato(capitolo)
+                const aperto =
+                  capitoloAperto === capitolo
+                const totale =
+                  totaleQuantitaCapitolo(capitolo)
+
+                return (
+                  <button
+                    key={capitolo}
+                    onClick={() =>
+                      apriChiudiCapitolo(capitolo)
+                    }
+                    style={{
+                      ...styles.btnCapitolo,
+                      background: usato
+                        ? "#198754"
+                        : aperto
+                        ? "#e7f1ff"
+                        : "#f2f4f7",
+                      color: usato
+                        ? "white"
+                        : "#101828",
+                      borderColor: usato
+                        ? "#198754"
+                        : aperto
+                        ? "#0d6efd"
+                        : "#d0d5dd"
+                    }}
+                  >
+                    <span>
+                      {labelCapitolo(capitolo)}
+                    </span>
+
+                    <small>
+                      {usato
+                        ? `✓ ${totale}`
+                        : aperto
+                        ? "aperto"
+                        : "apri"}
+                    </small>
+                  </button>
                 )
               })}
             </div>
-          )}
-        </div>
 
-        <div>
-          {!stanzaCorrente ? (
-            <div style={{ ...box, padding: 30, textAlign: "center", background: "white" }}>
-              <h3>Nessuna stanza selezionata</h3>
-              <p>Seleziona una stanza dall’elenco oppure creane una nuova.</p>
-              <button onClick={nuovaStanza} style={btnVerde}>➕ Nuova stanza</button>
+            {capitoloAperto && (
+              <div style={styles.pannelloCapitolo}>
+                <h3 style={{ marginTop: 0 }}>
+                  {labelCapitolo(capitoloAperto)}
+                </h3>
+
+                <div style={styles.tabellaContenitore}>
+                  <table style={styles.tabellaSelezione}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>
+                          Seleziona
+                        </th>
+
+                        <th style={styles.th}>
+                          Voce
+                        </th>
+
+                        <th style={styles.th}>
+                          Quantità
+                        </th>
+
+                        <th style={styles.th}>
+                          Posti
+                        </th>
+
+                        <th style={styles.th}>
+                          Descrizione / note
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {vociCapitoloAperto.map((voce) => {
+                        const riga =
+                          selezioni[voce.id] ||
+                          creaRigaSelezione(voce)
+
+                        const richiedeDescrizione =
+                          String(
+                            voce.voce || ""
+                          ).toLowerCase() === "altro"
+
+                        return (
+                          <tr key={voce.id}>
+                            <td
+                              style={{
+                                ...styles.td,
+                                textAlign: "center"
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={
+                                  riga.selezionata
+                                }
+                                onChange={(evento) =>
+                                  aggiornaSelezione(
+                                    voce,
+                                    "selezionata",
+                                    evento.target.checked
+                                  )
+                                }
+                                style={
+                                  styles.checkboxGrande
+                                }
+                              />
+                            </td>
+
+                            <td style={styles.td}>
+                              <b>{voce.voce}</b>
+                              <div
+                                style={
+                                  styles.testoSecondario
+                                }
+                              >
+                                {voce.richiede_posti
+                                  ? "Moduli secondo i posti"
+                                  : `${Number(
+                                      voce.moduli || 0
+                                    )} moduli`}
+                              </div>
+                            </td>
+
+                            <td style={styles.td}>
+                              <input
+                                type="number"
+                                min="1"
+                                value={riga.quantita}
+                                onChange={(evento) =>
+                                  aggiornaSelezione(
+                                    voce,
+                                    "quantita",
+                                    evento.target.value
+                                  )
+                                }
+                                style={
+                                  styles.inputQuantitaRiga
+                                }
+                              />
+                            </td>
+
+                            <td style={styles.td}>
+                              {voce.richiede_posti ? (
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={riga.posti}
+                                  onChange={(evento) =>
+                                    aggiornaSelezione(
+                                      voce,
+                                      "posti",
+                                      evento.target.value
+                                    )
+                                  }
+                                  style={
+                                    styles.inputQuantitaRiga
+                                  }
+                                />
+                              ) : (
+                                <span>-</span>
+                              )}
+                            </td>
+
+                            <td style={styles.td}>
+                              <input
+                                value={riga.descrizione}
+                                onChange={(evento) =>
+                                  aggiornaSelezione(
+                                    voce,
+                                    "descrizione",
+                                    evento.target.value
+                                  )
+                                }
+                                placeholder={
+                                  richiedeDescrizione
+                                    ? "Obbligatoria"
+                                    : "Facoltativa"
+                                }
+                                style={styles.input}
+                              />
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={styles.areaImporta}>
+                  <button
+                    onClick={() =>
+                      importaVociCapitolo(
+                        capitoloAperto
+                      )
+                    }
+                    style={styles.btnImporta}
+                  >
+                    Importa voci selezionate
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={styles.box}>
+            <div style={styles.testataSezione}>
+              <div>
+                <h2 style={{ margin: 0 }}>
+                  📋 Lista completa della stanza
+                </h2>
+
+                <div style={styles.testoSecondario}>
+                  {stanzaCorrente.nome} ·{" "}
+                  {stanzaCorrente.punti.length} righe
+                </div>
+              </div>
+
+              <div style={styles.riepilogoPiccolo}>
+                Totali: <b>{moduliTotaliCorrente}</b>
+                {" · "}
+                Inseriti: <b>{moduliUsatiCorrente}</b>
+                {" · "}
+                Rimasti:{" "}
+                <b>{moduliRimastiCorrente}</b>
+              </div>
             </div>
-          ) : (
-            <>
-              <div style={{ position: "sticky", top: 0, zIndex: 20, background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 10, marginTop: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(220px,1.5fr) repeat(3,100px)", gap: 8, alignItems: "end" }}>
-                  <div>
-                    <label>Stanza</label>
-                    <input value={stanzaCorrente.nome} onChange={e => cambiaNomeStanza(e.target.value)} style={input} />
-                  </div>
-                  <MiniBox titolo="Totali" valore={moduliTotaliCorrente} />
-                  <MiniBox titolo="Usati" valore={moduliUsatiCorrente} />
-                  <MiniBox titolo="Rimasti" valore={moduliRimastiCorrente} danger={moduliRimastiCorrente < 0} />
-                </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(100px,1fr))", gap: 8, marginTop: 10 }}>
-                  {scatoleDisponibili.map(s => (
-                    <div key={s.codice}>
-                      <label>{s.codice}</label>
-                      <input type="number" min="0" value={stanzaCorrente.scatole?.[s.codice] || 0} onChange={e => aggiornaScatola(s.codice, e.target.value)} style={input} />
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => duplicaStanza(stanzaCorrente)}>📋 Duplica stanza</button>
-                  <button onClick={() => eliminaStanza(stanzaCorrente)} style={btnRosso}>🗑 Elimina stanza</button>
-                </div>
+            {stanzaCorrente.punti.length === 0 ? (
+              <div style={styles.vuoto}>
+                Nessuna voce importata in questa stanza.
               </div>
+            ) : (
+              capitoli.map((capitolo) => {
+                const lista =
+                  stanzaCorrente.punti.filter(
+                    (punto) =>
+                      punto.capitolo === capitolo
+                  )
 
-              <div style={{ background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 10, marginTop: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "90px 170px minmax(220px,1fr) 120px minmax(200px,1fr) 120px", gap: 8, alignItems: "end" }}>
-                  <div>
-                    <label>Q.tà</label>
-                    <input type="number" min="1" value={nuovo.quantita} onChange={e => setNuovo({ ...nuovo, quantita: e.target.value })} style={input} />
-                  </div>
+                if (lista.length === 0) return null
 
-                  <div>
-                    <label>Capitolo</label>
-                    <select value={nuovo.capitolo} onChange={e => cambiaCapitolo(e.target.value)} style={input}>
-                      {capitoli.map(c => <option key={c} value={c}>{labelCapitolo(c)}</option>)}
-                    </select>
-                  </div>
+                return (
+                  <div
+                    key={capitolo}
+                    style={styles.gruppoLista}
+                  >
+                    <h3>
+                      {labelCapitolo(capitolo)}
+                    </h3>
 
-                  <div>
-                    <label>Cosa inserisco</label>
-                    <select value={nuovo.tipo} onChange={e => cambiaTipo(e.target.value)} style={input}>
-                      {vociCapitolo.map(v => <option key={v.id} value={v.voce}>{v.voce}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label>Posti</label>
-                    <input type="number" min="1" disabled={!getVoceConfigDaNuovo()?.richiede_posti} value={postiEffettivi()} onChange={e => setNuovo({ ...nuovo, posti: e.target.value })} style={{ ...input, background: !getVoceConfigDaNuovo()?.richiede_posti ? "#eee" : "white" }} />
-                  </div>
-
-                  <div>
-                    <label>Descrizione / note</label>
-                    <input value={nuovo.descrizione} onChange={e => setNuovo({ ...nuovo, descrizione: e.target.value })} placeholder={descrizioneAutomatica()} style={input} />
-                  </div>
-
-                  <button onClick={aggiungiPunto} style={btnVerde}>Aggiungi</button>
-                </div>
-
-                <div style={{ marginTop: 10, padding: 8, borderRadius: 6, background: "#e7f1ff", border: "1px solid #9ec5fe" }}>
-                  <b>Stai inserendo:</b> {nuovo.quantita} × {nuovo.descrizione.trim() || descrizioneAutomatica()} — moduli <b>{calcolaModuliPunto({ quantita: nuovo.quantita, capitolo: nuovo.capitolo, tipo: nuovo.tipo, posti: postiEffettivi() })}</b>
-                </div>
-              </div>
-
-              <div style={box}>
-                <h3>📋 Dettaglio stanza: {stanzaCorrente.nome}</h3>
-                <h4>📦 Materiali base</h4>
-
-                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 15 }}>
-                  <thead><tr><th style={th}>Quantità</th><th style={th}>Descrizione</th></tr></thead>
-                  <tbody>
-                    {scatoleDisponibili.map(s => {
-                      const qta = Number(stanzaCorrente.scatole?.[s.codice] || 0)
-                      if (!qta) return null
-                      return <tr key={s.codice}><td style={td}>{qta}</td><td style={td}>{s.descrizioneSupporto} + {s.descrizionePlacca}</td></tr>
-                    })}
-                  </tbody>
-                </table>
-
-                {capitoli.map(capitolo => {
-                  const lista = stanzaCorrente.punti.filter(p => p.capitolo === capitolo)
-                  if (lista.length === 0) return null
-                  return (
-                    <div key={capitolo} style={{ marginTop: 15 }}>
-                      <h4>{labelCapitolo(capitolo)}</h4>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <div
+                      style={styles.tabellaContenitore}
+                    >
+                      <table style={styles.tabella}>
                         <thead>
-                          <tr><th style={th}>Q.tà</th><th style={th}>Descrizione</th><th style={th}>Posti</th><th style={th}>Moduli</th><th style={th}>Azioni</th></tr>
+                          <tr>
+                            <th style={styles.th}>
+                              Quantità
+                            </th>
+
+                            <th style={styles.th}>
+                              Descrizione
+                            </th>
+
+                            <th style={styles.th}>
+                              Posti
+                            </th>
+
+                            <th style={styles.th}>
+                              Moduli
+                            </th>
+
+                            <th style={styles.th}>
+                              Azioni
+                            </th>
+                          </tr>
                         </thead>
+
                         <tbody>
-                          {lista.map(p => (
-                            <tr key={p.id} ref={String(p.id) === String(ultimoId) ? ultimoRef : null} style={{ background: String(p.id) === String(ultimoId) ? "#fff3cd" : "white" }}>
-                              <td style={td}>{p.quantita}</td>
-                              <td style={td}>{p.descrizione}</td>
-                              <td style={td}>{p.posti}</td>
-                              <td style={td}>{calcolaModuliPunto(p)}</td>
-                              <td style={td}><button onClick={() => eliminaPunto(p.id)} style={btnRosso}>Elimina</button></td>
+                          {lista.map((punto) => (
+                            <tr key={punto.id}>
+                              <td style={styles.td}>
+                                <div
+                                  style={
+                                    styles.controlloQuantitaPiccolo
+                                  }
+                                >
+                                  <button
+                                    onClick={() =>
+                                      cambiaQuantitaPunto(
+                                        punto.id,
+                                        -1
+                                      )
+                                    }
+                                    style={
+                                      styles.btnMenoPiccolo
+                                    }
+                                  >
+                                    −
+                                  </button>
+
+                                  <b>{punto.quantita}</b>
+
+                                  <button
+                                    onClick={() =>
+                                      cambiaQuantitaPunto(
+                                        punto.id,
+                                        1
+                                      )
+                                    }
+                                    style={
+                                      styles.btnPiuPiccolo
+                                    }
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+
+                              <td style={styles.td}>
+                                {punto.descrizione}
+                              </td>
+
+                              <td style={styles.td}>
+                                {punto.posti}
+                              </td>
+
+                              <td style={styles.td}>
+                                {calcolaModuliPunto(punto)}
+                              </td>
+
+                              <td style={styles.td}>
+                                <button
+                                  onClick={() =>
+                                    eliminaPunto(punto.id)
+                                  }
+                                  style={
+                                    styles.btnRossoPiccolo
+                                  }
+                                >
+                                  Elimina
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                  )
-                })}
+                  </div>
+                )
+              })
+            )}
 
-                {stanzaCorrente.punti.length === 0 && <div style={{ color: "#666" }}>Nessun punto inserito in questa stanza.</div>}
-              </div>
-            </>
-          )}
+            <div style={styles.areaSalva}>
+              <button
+                onClick={salvaENuovaStanza}
+                style={styles.btnSalvaNuova}
+              >
+                💾 Salva stanza e crea nuova
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div style={styles.box}>
+        <h2 style={{ marginTop: 0 }}>
+          📊 Riepilogo generale
+        </h2>
+
+        <div style={styles.grigliaRiepilogo}>
+          <MiniBox
+            titolo="Stanze"
+            valore={stanze.length}
+          />
+
+          <MiniBox
+            titolo="Scatole"
+            valore={riepilogoGenerale.numeroScatole}
+          />
+
+          <MiniBox
+            titolo="Punti"
+            valore={riepilogoGenerale.numeroPunti}
+          />
+
+          <MiniBox
+            titolo="Moduli totali"
+            valore={riepilogoGenerale.moduliTotali}
+          />
+
+          <MiniBox
+            titolo="Moduli usati"
+            valore={riepilogoGenerale.moduliUsati}
+          />
+
+          <MiniBox
+            titolo="Moduli rimasti"
+            valore={
+              riepilogoGenerale.moduliTotali -
+              riepilogoGenerale.moduliUsati
+            }
+            danger={
+              riepilogoGenerale.moduliTotali -
+                riepilogoGenerale.moduliUsati <
+              0
+            }
+          />
         </div>
-      </div>
-
-      <div style={box}>
-        <h2>📊 Riepilogo generale</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(110px,1fr))", gap: 8 }}>
-          <MiniBox titolo="Stanze" valore={stanze.length} />
-          <MiniBox titolo="Scatole" valore={riepilogoGenerale.numeroScatole} />
-          <MiniBox titolo="Punti" valore={riepilogoGenerale.numeroPunti} />
-          <MiniBox titolo="Moduli totali" valore={riepilogoGenerale.moduliTotali} />
-          <MiniBox titolo="Moduli usati" valore={riepilogoGenerale.moduliUsati} />
-          <MiniBox titolo="Moduli rimasti" valore={riepilogoGenerale.moduliTotali - riepilogoGenerale.moduliUsati} danger={riepilogoGenerale.moduliTotali - riepilogoGenerale.moduliUsati < 0} />
-        </div>
-
-        {stanze.length > 0 && (
-          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 15 }}>
-            <thead>
-              <tr><th style={th}>Stanza</th><th style={th}>Scatole</th><th style={th}>Punti</th><th style={th}>Moduli totali</th><th style={th}>Moduli usati</th><th style={th}>Rimasti</th></tr>
-            </thead>
-            <tbody>
-              {stanze.map(stanza => {
-                const scatole = scatoleDisponibili.reduce((tot, s) => tot + Number(stanza.scatole?.[s.codice] || 0), 0)
-                const punti = (stanza.punti || []).reduce((tot, p) => tot + Number(p.quantita || 0), 0)
-                const totali = calcolaModuliDaScatole(stanza.scatole)
-                const usati = calcolaModuliUsati(stanza.punti)
-                return <tr key={stanza.id}><td style={td}>{stanza.nome}</td><td style={td}>{scatole}</td><td style={td}>{punti}</td><td style={td}>{totali}</td><td style={td}>{usati}</td><td style={td}>{totali - usati}</td></tr>
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div style={box}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>📦 Distinta materiali</h2>
-          <button onClick={esportaExcel} style={btnBlu}>📊 Esporta Excel</button>
-        </div>
-
-        {distintaMateriali.length === 0 ? (
-          <div style={{ marginTop: 12 }}>Nessun materiale presente.</div>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
-            <thead><tr><th style={th}>Gruppo</th><th style={th}>Descrizione</th><th style={th}>Quantità</th></tr></thead>
-            <tbody>
-              {distintaMateriali.map((v, i) => <tr key={`${v.gruppo}_${v.descrizione}_${i}`}><td style={td}>{v.gruppo}</td><td style={td}>{v.descrizione}</td><td style={td}>{v.quantita}</td></tr>)}
-            </tbody>
-          </table>
-        )}
       </div>
     </div>
   )
 }
 
-function MiniBox({ titolo, valore, danger = false }) {
+function MiniBox({
+  titolo,
+  valore,
+  danger = false,
+  ok = false
+}) {
+  let background = "#f8f9fa"
+  let borderColor = "#d0d5dd"
+  let color = "#101828"
+
+  if (danger) {
+    background = "#fee4e2"
+    borderColor = "#f97066"
+    color = "#b42318"
+  }
+
+  if (ok) {
+    background = "#dcfae6"
+    borderColor = "#6ce9a6"
+    color = "#067647"
+  }
+
   return (
-    <div style={{ border: "1px solid #ccc", borderRadius: 6, padding: 6, background: danger ? "#f8d7da" : "#f8f9fa", textAlign: "center" }}>
-      <b>{titolo}</b>
-      <div style={{ fontSize: 20, fontWeight: "bold" }}>{valore}</div>
+    <div
+      style={{
+        ...styles.miniBox,
+        background,
+        borderColor,
+        color
+      }}
+    >
+      <div style={styles.titoloMiniBox}>
+        {titolo}
+      </div>
+
+      <div style={styles.valoreMiniBox}>
+        {valore}
+      </div>
     </div>
   )
 }
 
-const btnVerde = { padding: 8, borderRadius: 6, border: "none", background: "#198754", color: "white", cursor: "pointer", fontWeight: "bold" }
-const btnVerdePiccolo = { padding: "6px 10px", borderRadius: 6, border: "none", background: "#198754", color: "white", cursor: "pointer", fontWeight: "bold" }
-const btnBlu = { padding: 8, borderRadius: 6, border: "none", background: "#0d6efd", color: "white", cursor: "pointer", fontWeight: "bold" }
-const btnRosso = { padding: "6px 10px", borderRadius: 6, border: "none", background: "#dc3545", color: "white", cursor: "pointer", fontWeight: "bold" }
+const styles = {
+  pagina: {
+    padding: 15,
+    maxWidth: 1300,
+    margin: "0 auto",
+    fontFamily: "Arial, sans-serif",
+    color: "#101828"
+  },
+
+  box: {
+    border: "1px solid #d0d5dd",
+    borderRadius: 9,
+    padding: 12,
+    marginTop: 12,
+    background: "#ffffff"
+  },
+
+  boxCentrale: {
+    border: "1px solid #d0d5dd",
+    borderRadius: 9,
+    padding: 30,
+    marginTop: 12,
+    background: "#ffffff",
+    textAlign: "center"
+  },
+
+  messaggio: {
+    position: "sticky",
+    top: 8,
+    zIndex: 50,
+    padding: "10px 12px",
+    border: "1px solid #75b798",
+    borderRadius: 7,
+    background: "#d1e7dd",
+    fontWeight: "bold"
+  },
+
+  grigliaDue: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 10
+  },
+
+  label: {
+    display: "block",
+    marginBottom: 5,
+    fontWeight: "bold",
+    fontSize: 14
+  },
+
+  input: {
+    width: "100%",
+    padding: 8,
+    border: "1px solid #c7cdd4",
+    borderRadius: 6,
+    boxSizing: "border-box",
+    background: "white"
+  },
+
+  rigaAzioni: {
+    display: "flex",
+    gap: 9,
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginTop: 10
+  },
+
+  testoSecondario: {
+    color: "#667085",
+    fontSize: 13
+  },
+
+  tendinaStanze: {
+    marginTop: 12,
+    border: "1px solid #d0d5dd",
+    borderRadius: 9,
+    background: "#ffffff",
+    overflow: "hidden"
+  },
+
+  summaryStanze: {
+    padding: 12,
+    cursor: "pointer",
+    fontWeight: "bold",
+    background: "#f8f9fa"
+  },
+
+  contenutoTendina: {
+    display: "grid",
+    gap: 7,
+    padding: 10
+  },
+
+  rigaStanzaSalvata: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: 8,
+    border: "1px solid",
+    borderRadius: 7
+  },
+
+  btnNomeStanza: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+    border: "none",
+    background: "transparent",
+    textAlign: "left",
+    cursor: "pointer",
+    fontWeight: "bold"
+  },
+
+  dettaglioStanza: {
+    color: "#667085",
+    fontWeight: "normal"
+  },
+
+  rigaNomeModuli: {
+    display: "grid",
+    gridTemplateColumns:
+      "minmax(250px, 1.6fr) repeat(3, minmax(110px, 0.55fr))",
+    gap: 9,
+    alignItems: "end"
+  },
+
+  miniBox: {
+    minHeight: 62,
+    padding: 7,
+    border: "1px solid",
+    borderRadius: 7,
+    textAlign: "center"
+  },
+
+  titoloMiniBox: {
+    fontSize: 13,
+    fontWeight: "bold"
+  },
+
+  valoreMiniBox: {
+    marginTop: 3,
+    fontSize: 22,
+    fontWeight: "bold"
+  },
+
+  grigliaScatole: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(170px, 1fr))",
+    gap: 9,
+    marginTop: 12
+  },
+
+  boxScatola: {
+    padding: 9,
+    border: "1px solid #d0d5dd",
+    borderRadius: 7,
+    background: "#f9fafb"
+  },
+
+  titoloScatola: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 7,
+    marginBottom: 7,
+    fontWeight: "bold"
+  },
+
+  controlloQuantita: {
+    display: "grid",
+    gridTemplateColumns: "40px 1fr 40px",
+    gap: 5
+  },
+
+  inputQuantita: {
+    width: "100%",
+    padding: 7,
+    border: "1px solid #c7cdd4",
+    borderRadius: 5,
+    textAlign: "center",
+    fontWeight: "bold"
+  },
+
+  btnMeno: {
+    border: "none",
+    borderRadius: 5,
+    background: "#667085",
+    color: "white",
+    fontSize: 19,
+    fontWeight: "bold",
+    cursor: "pointer"
+  },
+
+  btnPiu: {
+    border: "none",
+    borderRadius: 5,
+    background: "#198754",
+    color: "white",
+    fontSize: 19,
+    fontWeight: "bold",
+    cursor: "pointer"
+  },
+
+  grigliaCapitoli: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(170px, 1fr))",
+    gap: 8,
+    marginTop: 12
+  },
+
+  btnCapitolo: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 4,
+    padding: "12px 14px",
+    border: "2px solid",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontWeight: "bold",
+    textAlign: "left"
+  },
+
+  pannelloCapitolo: {
+    marginTop: 12,
+    padding: 12,
+    border: "2px solid #9ec5fe",
+    borderRadius: 8,
+    background: "#f8fbff"
+  },
+
+  tabellaContenitore: {
+    overflowX: "auto"
+  },
+
+  tabellaSelezione: {
+    width: "100%",
+    minWidth: 760,
+    borderCollapse: "collapse"
+  },
+
+  tabella: {
+    width: "100%",
+    minWidth: 680,
+    borderCollapse: "collapse"
+  },
+
+  th: {
+    padding: 8,
+    border: "1px solid #d0d5dd",
+    background: "#f2f4f7",
+    textAlign: "left"
+  },
+
+  td: {
+    padding: 7,
+    border: "1px solid #d0d5dd"
+  },
+
+  checkboxGrande: {
+    width: 20,
+    height: 20,
+    cursor: "pointer"
+  },
+
+  inputQuantitaRiga: {
+    width: 85,
+    padding: 7,
+    border: "1px solid #c7cdd4",
+    borderRadius: 5,
+    textAlign: "center",
+    fontWeight: "bold"
+  },
+
+  areaImporta: {
+    display: "flex",
+    justifyContent: "flex-end",
+    marginTop: 12
+  },
+
+  btnImporta: {
+    padding: "11px 16px",
+    border: "none",
+    borderRadius: 7,
+    background: "#198754",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold",
+    fontSize: 15
+  },
+
+  testataSezione: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap"
+  },
+
+  riepilogoPiccolo: {
+    padding: "7px 10px",
+    borderRadius: 7,
+    background: "#f8f9fa"
+  },
+
+  vuoto: {
+    marginTop: 10,
+    padding: 15,
+    borderRadius: 7,
+    background: "#f8f9fa",
+    color: "#667085",
+    textAlign: "center"
+  },
+
+  gruppoLista: {
+    marginTop: 15
+  },
+
+  controlloQuantitaPiccolo: {
+    display: "grid",
+    gridTemplateColumns: "29px 35px 29px",
+    alignItems: "center",
+    gap: 4,
+    textAlign: "center"
+  },
+
+  btnMenoPiccolo: {
+    padding: 4,
+    border: "none",
+    borderRadius: 4,
+    background: "#667085",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold"
+  },
+
+  btnPiuPiccolo: {
+    padding: 4,
+    border: "none",
+    borderRadius: 4,
+    background: "#198754",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold"
+  },
+
+  areaSalva: {
+    display: "flex",
+    justifyContent: "center",
+    marginTop: 20,
+    paddingTop: 15,
+    borderTop: "2px solid #eaecf0"
+  },
+
+  btnSalvaNuova: {
+    minWidth: 290,
+    padding: "13px 20px",
+    border: "none",
+    borderRadius: 7,
+    background: "#0d6efd",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold",
+    fontSize: 16
+  },
+
+  grigliaRiepilogo: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(120px, 1fr))",
+    gap: 8
+  },
+
+  btnVerde: {
+    padding: "8px 11px",
+    border: "none",
+    borderRadius: 6,
+    background: "#198754",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold"
+  },
+
+  btnBlu: {
+    padding: "8px 11px",
+    border: "none",
+    borderRadius: 6,
+    background: "#0d6efd",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold"
+  },
+
+  btnRosso: {
+    padding: "8px 11px",
+    border: "none",
+    borderRadius: 6,
+    background: "#dc3545",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold"
+  },
+
+  btnRossoPiccolo: {
+    padding: "6px 9px",
+    border: "none",
+    borderRadius: 5,
+    background: "#dc3545",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold"
+  }
+}

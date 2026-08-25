@@ -1,3 +1,6 @@
+
+
+
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
@@ -13,9 +16,16 @@ export default function CalendarMonth() {
   const [interventi, setInterventi] = useState([])
   const [operatori, setOperatori] = useState([])
   const [operatoreFiltro, setOperatoreFiltro] = useState("")
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768)
   const [giornoSelezionato, setGiornoSelezionato] = useState(
     dayjs().format("YYYY-MM-DD")
   )
+
+  useEffect(() => {
+    const aggiornaMobile = () => setIsMobile(window.innerWidth <= 768)
+    window.addEventListener("resize", aggiornaMobile)
+    return () => window.removeEventListener("resize", aggiornaMobile)
+  }, [])
 
   useEffect(() => {
     caricaOperatori()
@@ -175,11 +185,11 @@ export default function CalendarMonth() {
     : 0
 
   return (
-    <div style={page}>
-      <h1 style={title}>📅 Calendario interventi</h1>
+    <div style={{ ...page, ...(isMobile ? pageMobile : {}) }}>
+      <h1 style={{ ...title, ...(isMobile ? titleMobile : {}) }}>📅 Calendario interventi</h1>
 
-      <div style={layout}>
-        <div style={calendarPanel}>
+      <div style={{ ...layout, ...(isMobile ? layoutMobile : {}) }}>
+        <div style={{ ...calendarPanel, ...(isMobile ? calendarPanelMobile : {}) }}>
           <div style={topBar}>
             <button
               style={button}
@@ -188,7 +198,7 @@ export default function CalendarMonth() {
               ◀
             </button>
 
-            <h2 style={monthTitle}>{mese.format("MMMM YYYY")}</h2>
+            <h2 style={{ ...monthTitle, ...(isMobile ? monthTitleMobile : {}) }}>{mese.format("MMMM YYYY")}</h2>
 
             <button
               style={button}
@@ -237,6 +247,7 @@ export default function CalendarMonth() {
                   }
                   style={{
                     ...dayCell,
+                    ...(isMobile ? dayCellMobile : {}),
                     background: coloreGiorno(giorno),
                     cursor: giorno ? "pointer" : "default",
                     border: selezionato
@@ -246,10 +257,10 @@ export default function CalendarMonth() {
                 >
                   {giorno && (
                     <>
-                      <div style={dayNumber}>{giorno.date()}</div>
-                      <div style={dayInfo}>{ore > 0 ? `${ore}h` : "-"}</div>
+                      <div style={{ ...dayNumber, ...(isMobile ? dayNumberMobile : {}) }}>{giorno.date()}</div>
+                      <div style={{ ...dayInfo, ...(isMobile ? dayInfoMobile : {}) }}>{ore > 0 ? `${ore}h` : "-"}</div>
                       {lista.length > 0 && (
-                        <div style={dayInfo}>{lista.length} int.</div>
+                        <div style={{ ...dayInfo, ...(isMobile ? dayInfoMobile : {}) }}>{lista.length} int.</div>
                       )}
                     </>
                   )}
@@ -259,8 +270,8 @@ export default function CalendarMonth() {
           </div>
         </div>
 
-        <div style={detailsBox}>
-          <div style={detailsHeader}>
+        <div style={{ ...detailsBox, ...(isMobile ? detailsBoxMobile : {}) }}>
+          <div style={{ ...detailsHeader, ...(isMobile ? detailsHeaderMobile : {}) }}>
             <div>
               <h2 style={{ margin: 0 }}>
                 Interventi del{" "}
@@ -272,7 +283,7 @@ export default function CalendarMonth() {
               </div>
             </div>
 
-            <div style={headerButtons}>
+            <div style={{ ...headerButtons, ...(isMobile ? headerButtonsMobile : {}) }}>
               <button onClick={vaiAlGiornoPrima} style={prevDayButton}>
                 ⬅️ Giorno prima
               </button>
@@ -300,8 +311,8 @@ export default function CalendarMonth() {
                 intervento.materiali_bollettino?.length > 0
 
               return (
-                <div key={intervento.id} style={card}>
-                  <div style={cardContent}>
+                <div key={intervento.id} style={{ ...card, ...(isMobile ? cardMobile : {}) }}>
+                  <div style={{ ...cardContent, ...(isMobile ? cardContentMobile : {}) }}>
                     <div style={cardLeft}>
                       <h3 style={cardTitle}>
                         {intervento.clienti?.nome || "Cliente non indicato"}
@@ -356,7 +367,7 @@ export default function CalendarMonth() {
                       )}
                     </div>
 
-                    <div style={cardActions}>
+                    <div style={{ ...cardActions, ...(isMobile ? cardActionsMobile : {}) }}>
                       <button
                         onClick={() => modificaIntervento(intervento.id)}
                         style={modifyButton}
@@ -598,3 +609,19 @@ const modifyButton = {
   cursor: "pointer",
   fontWeight: "bold",
 }
+
+/* Adattamento telefono: su PC la grafica originale resta invariata */
+const pageMobile = { padding: "8px", width: "100%", overflowX: "hidden" }
+const titleMobile = { fontSize: "22px", lineHeight: 1.2 }
+const layoutMobile = { gridTemplateColumns: "1fr", gap: "12px" }
+const calendarPanelMobile = { position: "static", top: "auto", width: "100%", padding: "8px", boxSizing: "border-box" }
+const monthTitleMobile = { fontSize: "18px", textAlign: "center" }
+const dayCellMobile = { minHeight: "52px", padding: "3px 1px" }
+const dayNumberMobile = { fontSize: "14px", marginBottom: "2px" }
+const dayInfoMobile = { fontSize: "10px", lineHeight: 1.15 }
+const detailsBoxMobile = { minHeight: 0, width: "100%", padding: "10px", borderWidth: "2px", boxSizing: "border-box" }
+const detailsHeaderMobile = { flexDirection: "column", alignItems: "stretch" }
+const headerButtonsMobile = { width: "100%" }
+const cardMobile = { padding: "10px" }
+const cardContentMobile = { gridTemplateColumns: "1fr", gap: "10px" }
+const cardActionsMobile = { flexDirection: "row", flexWrap: "wrap", width: "100%" }

@@ -2147,7 +2147,7 @@ export default function CarrelliPage() {
                         ? "2px solid #0d6efd"
                         : "1px solid #198754",
                     borderRadius: 10,
-                    padding: 12,
+                    padding: 10,
                     marginBottom: 10,
                     background: giaPresente
                       ? "#fff8db"
@@ -2158,23 +2158,24 @@ export default function CarrelliPage() {
                   }}
                 >
                   <div style={{
-                    display: "flex",
+                    display: "grid",
+                    gridTemplateColumns: "78px 1fr",
                     gap: 10,
-                    alignItems: "flex-start"
+                    alignItems: "start"
                   }}>
-                    <input
-                      type="checkbox"
-                      checked={rigaSelezionata(r)}
-                      onChange={() => toggleRigaSelezionata(r)}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        cursor: "pointer",
-                        flexShrink: 0
-                      }}
-                    />
+                    <div style={{ minWidth: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={rigaSelezionata(r)}
+                        onChange={() => toggleRigaSelezionata(r)}
+                        style={{
+                          width: 22,
+                          height: 22,
+                          cursor: "pointer",
+                          marginBottom: 8
+                        }}
+                      />
 
-                    <div style={{ minWidth: 0, flex: 1 }}>
                       <input
                         value={r.codice || ""}
                         onChange={(e) =>
@@ -2183,59 +2184,71 @@ export default function CarrelliPage() {
                         placeholder="Codice"
                         style={{
                           width: "100%",
-                          padding: 8,
+                          padding: "6px 5px",
                           boxSizing: "border-box",
                           border: "1px solid #bbb",
                           borderRadius: 6,
                           fontWeight: "bold",
-                          fontSize: 16
+                          fontSize: 11
                         }}
                       />
 
-                      <input
+                      <label style={{
+                        display: "block",
+                        marginTop: 7,
+                        fontSize: 11,
+                        fontWeight: "bold"
+                      }}>
+                        Qta
+                        <input
+                          type="number"
+                          value={r.quantita || ""}
+                          onChange={(e) =>
+                            aggiornaCampoRiga(rigaId, "quantita", e.target.value)
+                          }
+                          style={{
+                            width: "100%",
+                            marginTop: 3,
+                            padding: "6px 5px",
+                            boxSizing: "border-box",
+                            border: "1px solid #bbb",
+                            borderRadius: 6,
+                            fontSize: 13
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <textarea
                         value={r.descrizione || ""}
                         onChange={(e) =>
                           aggiornaCampoRiga(rigaId, "descrizione", e.target.value)
                         }
                         placeholder="Descrizione"
+                        rows={3}
                         style={{
                           width: "100%",
+                          minHeight: 72,
+                          resize: "vertical",
                           padding: 8,
-                          marginTop: 7,
                           boxSizing: "border-box",
                           border: "1px solid #bbb",
                           borderRadius: 6,
-                          fontSize: 15
+                          fontSize: 15,
+                          lineHeight: 1.3
                         }}
                       />
 
-                      <div style={{
-                        marginTop: 9,
-                        display: "flex",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        alignItems: "center"
-                      }}>
-                        <label style={{ fontSize: 13, fontWeight: "bold" }}>
-                          Qta
-                          <input
-                            type="number"
-                            value={r.quantita || ""}
-                            onChange={(e) =>
-                              aggiornaCampoRiga(rigaId, "quantita", e.target.value)
-                            }
-                            style={{
-                              width: 72,
-                              padding: 7,
-                              marginLeft: 5,
-                              border: "1px solid #bbb",
-                              borderRadius: 6
-                            }}
-                          />
-                        </label>
-
-                        {mostraPrezzi && (
-                          <label style={{ fontSize: 13, fontWeight: "bold" }}>
+                      {mostraPrezzi && (
+                        <div style={{
+                          marginTop: 8,
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          alignItems: "center"
+                        }}>
+                          <label style={{ fontSize: 12, fontWeight: "bold" }}>
                             Prezzo
                             <input
                               type="number"
@@ -2245,26 +2258,24 @@ export default function CarrelliPage() {
                                 aggiornaCampoRiga(rigaId, "prezzo", e.target.value)
                               }
                               style={{
-                                width: 92,
-                                padding: 7,
+                                width: 88,
+                                padding: 6,
                                 marginLeft: 5,
                                 border: "1px solid #bbb",
                                 borderRadius: 6
                               }}
                             />
                           </label>
-                        )}
 
-                        {mostraPrezzi && (
                           <span style={{
-                            fontSize: 13,
+                            fontSize: 12,
                             color: "#555",
                             fontWeight: "bold"
                           }}>
                             {formatPrezzo(r.prezzo)}
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
                       {giaPresente && (
                         <div style={{

@@ -2131,10 +2131,201 @@ export default function CarrelliPage() {
             </div>
           )}
 
-          <div style={{ overflowX: isMobile ? "auto" : "visible" }}>
+          <div>
           {righeFiltrate.map((r) => {
             const giaPresente = materialeGiaPresente(r)
             const rigaId = idRigaCarrello(r)
+
+            if (isMobile) {
+              return (
+                <div
+                  key={rigaId}
+                  style={{
+                    border: giaPresente
+                      ? "2px solid #ffc107"
+                      : rigaSelezionata(r)
+                        ? "2px solid #0d6efd"
+                        : "1px solid #198754",
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 10,
+                    background: giaPresente
+                      ? "#fff8db"
+                      : rigaSelezionata(r)
+                        ? "#e7f1ff"
+                        : "#effcf4",
+                    boxSizing: "border-box"
+                  }}
+                >
+                  <div style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start"
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={rigaSelezionata(r)}
+                      onChange={() => toggleRigaSelezionata(r)}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        cursor: "pointer",
+                        flexShrink: 0
+                      }}
+                    />
+
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <input
+                        value={r.codice || ""}
+                        onChange={(e) =>
+                          aggiornaCampoRiga(rigaId, "codice", e.target.value)
+                        }
+                        placeholder="Codice"
+                        style={{
+                          width: "100%",
+                          padding: 8,
+                          boxSizing: "border-box",
+                          border: "1px solid #bbb",
+                          borderRadius: 6,
+                          fontWeight: "bold",
+                          fontSize: 16
+                        }}
+                      />
+
+                      <input
+                        value={r.descrizione || ""}
+                        onChange={(e) =>
+                          aggiornaCampoRiga(rigaId, "descrizione", e.target.value)
+                        }
+                        placeholder="Descrizione"
+                        style={{
+                          width: "100%",
+                          padding: 8,
+                          marginTop: 7,
+                          boxSizing: "border-box",
+                          border: "1px solid #bbb",
+                          borderRadius: 6,
+                          fontSize: 15
+                        }}
+                      />
+
+                      <div style={{
+                        marginTop: 9,
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        alignItems: "center"
+                      }}>
+                        <label style={{ fontSize: 13, fontWeight: "bold" }}>
+                          Qta
+                          <input
+                            type="number"
+                            value={r.quantita || ""}
+                            onChange={(e) =>
+                              aggiornaCampoRiga(rigaId, "quantita", e.target.value)
+                            }
+                            style={{
+                              width: 72,
+                              padding: 7,
+                              marginLeft: 5,
+                              border: "1px solid #bbb",
+                              borderRadius: 6
+                            }}
+                          />
+                        </label>
+
+                        {mostraPrezzi && (
+                          <label style={{ fontSize: 13, fontWeight: "bold" }}>
+                            Prezzo
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={r.prezzo || ""}
+                              onChange={(e) =>
+                                aggiornaCampoRiga(rigaId, "prezzo", e.target.value)
+                              }
+                              style={{
+                                width: 92,
+                                padding: 7,
+                                marginLeft: 5,
+                                border: "1px solid #bbb",
+                                borderRadius: 6
+                              }}
+                            />
+                          </label>
+                        )}
+
+                        {mostraPrezzi && (
+                          <span style={{
+                            fontSize: 13,
+                            color: "#555",
+                            fontWeight: "bold"
+                          }}>
+                            {formatPrezzo(r.prezzo)}
+                          </span>
+                        )}
+                      </div>
+
+                      {giaPresente && (
+                        <div style={{
+                          marginTop: 8,
+                          display: "inline-block",
+                          background: "#ffc107",
+                          color: "#222",
+                          borderRadius: 999,
+                          padding: "4px 8px",
+                          fontSize: 12,
+                          fontWeight: "bold"
+                        }}>
+                          ⚠️ GIÀ PRESENTE
+                        </div>
+                      )}
+
+                      <div style={{
+                        marginTop: 10,
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap"
+                      }}>
+                        <button
+                          onClick={() => salvaRigaCarrello(r)}
+                          disabled={salvandoRigaId === r.id}
+                          style={{
+                            background: "#198754",
+                            color: "white",
+                            border: "none",
+                            padding: "8px 10px",
+                            borderRadius: 6,
+                            cursor:
+                              salvandoRigaId === r.id
+                                ? "not-allowed"
+                                : "pointer",
+                            fontWeight: "bold"
+                          }}
+                        >
+                          {salvandoRigaId === r.id ? "Salvo..." : "💾 Salva"}
+                        </button>
+
+                        <button
+                          onClick={() => eliminaRigaCarrello(r)}
+                          style={{
+                            background: "#dc3545",
+                            color: "white",
+                            border: "none",
+                            padding: "8px 10px",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            fontWeight: "bold"
+                          }}
+                        >
+                          🗑 Elimina
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
 
             return (
               <div
@@ -2144,12 +2335,15 @@ export default function CarrelliPage() {
                   gridTemplateColumns: mostraPrezzi
                     ? "45px 130px 1fr 90px 110px 180px"
                     : "45px 130px 1fr 90px 180px",
-                  minWidth: isMobile ? (mostraPrezzi ? 760 : 640) : "auto",
                   gap: 10,
                   borderBottom: "1px solid #ddd",
                   padding: 6,
                   alignItems: "center",
-                  background: giaPresente ? "#fff3cd" : rigaSelezionata(r) ? "#e7f1ff" : "transparent",
+                  background: giaPresente
+                    ? "#fff3cd"
+                    : rigaSelezionata(r)
+                      ? "#e7f1ff"
+                      : "transparent",
                   borderLeft: giaPresente ? "5px solid #ff9800" : "none"
                 }}
               >
@@ -2169,9 +2363,15 @@ export default function CarrelliPage() {
                 <div>
                   <input
                     value={r.codice || ""}
-                    onChange={(e) => aggiornaCampoRiga(rigaId, "codice", e.target.value)}
+                    onChange={(e) =>
+                      aggiornaCampoRiga(rigaId, "codice", e.target.value)
+                    }
                     placeholder="Codice"
-                    style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
+                    style={{
+                      width: "100%",
+                      padding: 6,
+                      boxSizing: "border-box"
+                    }}
                   />
 
                   {giaPresente && (
@@ -2189,9 +2389,15 @@ export default function CarrelliPage() {
                 <div>
                   <input
                     value={r.descrizione || ""}
-                    onChange={(e) => aggiornaCampoRiga(rigaId, "descrizione", e.target.value)}
+                    onChange={(e) =>
+                      aggiornaCampoRiga(rigaId, "descrizione", e.target.value)
+                    }
                     placeholder="Descrizione"
-                    style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
+                    style={{
+                      width: "100%",
+                      padding: 6,
+                      boxSizing: "border-box"
+                    }}
                   />
                 </div>
 
@@ -2199,9 +2405,15 @@ export default function CarrelliPage() {
                   <input
                     type="number"
                     value={r.quantita || ""}
-                    onChange={(e) => aggiornaCampoRiga(rigaId, "quantita", e.target.value)}
+                    onChange={(e) =>
+                      aggiornaCampoRiga(rigaId, "quantita", e.target.value)
+                    }
                     placeholder="Qta"
-                    style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
+                    style={{
+                      width: "100%",
+                      padding: 6,
+                      boxSizing: "border-box"
+                    }}
                   />
                 </div>
 
@@ -2211,11 +2423,21 @@ export default function CarrelliPage() {
                       type="number"
                       step="0.01"
                       value={r.prezzo || ""}
-                      onChange={(e) => aggiornaCampoRiga(rigaId, "prezzo", e.target.value)}
+                      onChange={(e) =>
+                        aggiornaCampoRiga(rigaId, "prezzo", e.target.value)
+                      }
                       placeholder="Prezzo"
-                      style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
+                      style={{
+                        width: "100%",
+                        padding: 6,
+                        boxSizing: "border-box"
+                      }}
                     />
-                    <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>
+                    <div style={{
+                      fontSize: 12,
+                      color: "#555",
+                      marginTop: 2
+                    }}>
                       {formatPrezzo(r.prezzo)}
                     </div>
                   </div>
@@ -2235,7 +2457,10 @@ export default function CarrelliPage() {
                       border: "none",
                       padding: "6px 8px",
                       borderRadius: 5,
-                      cursor: salvandoRigaId === r.id ? "not-allowed" : "pointer"
+                      cursor:
+                        salvandoRigaId === r.id
+                          ? "not-allowed"
+                          : "pointer"
                     }}
                   >
                     {salvandoRigaId === r.id ? "Salvo..." : "💾 Salva"}

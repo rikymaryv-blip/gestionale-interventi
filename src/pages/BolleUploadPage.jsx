@@ -686,8 +686,8 @@ export default function BolleUploadPage() {
                 key={i}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "68px minmax(0, 1fr)",
-                  gap: 10,
+                  gridTemplateColumns: "58px minmax(0, 1fr)",
+                  gap: 8,
                   border: "1px solid #198754",
                   borderRadius: 10,
                   padding: 10,
@@ -696,28 +696,33 @@ export default function BolleUploadPage() {
                   boxSizing: "border-box"
                 }}
               >
-                <div style={{ minWidth: 0 }}>
+                <div style={{
+                  minWidth: 0,
+                  borderRight: "1px solid #d9e8df",
+                  paddingRight: 6
+                }}>
                   <div style={{
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: "bold",
-                    lineHeight: 1.2,
-                    overflowWrap: "anywhere"
+                    lineHeight: 1.15,
+                    overflowWrap: "anywhere",
+                    color: "#333"
                   }}>
                     {r.codice || "-"}
                   </div>
 
                   <div style={{
                     marginTop: 8,
-                    fontSize: 11,
-                    color: "#555"
+                    fontSize: 10,
+                    color: "#666"
                   }}>
                     Qta
                   </div>
 
                   <div style={{
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: "bold",
-                    marginTop: 2
+                    marginTop: 1
                   }}>
                     {r.quantita || 0}
                   </div>
@@ -725,11 +730,13 @@ export default function BolleUploadPage() {
 
                 <div style={{
                   minWidth: 0,
+                  width: "100%",
                   fontSize: 15,
-                  lineHeight: 1.4,
+                  lineHeight: 1.3,
                   whiteSpace: "normal",
-                  overflowWrap: "anywhere",
-                  wordBreak: "break-word"
+                  overflowWrap: "break-word",
+                  wordBreak: "normal",
+                  hyphens: "none"
                 }}>
                   {r.descrizione || "-"}
                 </div>

@@ -6,6 +6,9 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 export default function InterventiPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 700 : false
+  )
   const editIdDaUrl = searchParams.get("edit_id")
   const dataDaUrl = searchParams.get("data")
 
@@ -53,6 +56,13 @@ export default function InterventiPage() {
   }
 
   const [form, setForm] = useState(formVuoto)
+
+  useEffect(() => {
+    const aggiornaMobile = () => setIsMobile(window.innerWidth <= 700)
+    aggiornaMobile()
+    window.addEventListener("resize", aggiornaMobile)
+    return () => window.removeEventListener("resize", aggiornaMobile)
+  }, [])
 
   useEffect(() => {
     loadAll()
@@ -980,10 +990,10 @@ export default function InterventiPage() {
   }
 
   return (
-    <div style={page}>
-      <h2 style={{ marginTop: 0 }}>Interventi</h2>
+    <div style={isMobile ? pageMobile : page}>
+      <h2 style={isMobile ? { marginTop: 0, fontSize: 22 } : { marginTop: 0 }}>Interventi</h2>
 
-      <div style={layout}>
+      <div style={isMobile ? layoutMobile : layout}>
         <div style={mainColumn}>
           {editingId && (
             <div style={editingBox}>
@@ -995,7 +1005,7 @@ export default function InterventiPage() {
             </div>
           )}
 
-          <div style={section}>
+          <div style={isMobile ? sectionMobile : section}>
             <h3 style={sectionTitle}>Dati intervento</h3>
 
             <div style={{ position: "relative" }}>
@@ -1085,12 +1095,12 @@ export default function InterventiPage() {
             />
           </div>
 
-          <div style={section}>
+          <div style={isMobile ? sectionMobile : section}>
             <h3 style={sectionTitle}>Operatori</h3>
 
             {form.operatori.map((op, i) => (
-              <div key={i} style={operatorRow}>
-                <div style={{ position: "relative", minWidth: 240, flex: 1 }}>
+              <div key={i} style={isMobile ? operatorRowMobile : operatorRow}>
+                <div style={isMobile ? { position: "relative", minWidth: 0, width: "100%", flex: 1 } : { position: "relative", minWidth: 240, flex: 1 }}>
                   <input
                     ref={(el) => (operatoreInputRefs.current[i] = el)}
                     placeholder="Cerca operatore..."
@@ -1164,7 +1174,7 @@ export default function InterventiPage() {
                   value={op.ore}
                   onChange={(e) => aggiornaOperatore(i, "ore", e.target.value)}
                   onKeyDown={(e) => gestisciTastieraOre(e, i)}
-                  style={{ ...inputFull, width: 90 }}
+                  style={isMobile ? { ...inputFull, width: "calc(100% - 52px)", marginBottom: 0 } : { ...inputFull, width: 90 }}
                 />
 
                 <button onClick={() => eliminaOperatore(i)} style={dangerSmall}>
@@ -1178,8 +1188,8 @@ export default function InterventiPage() {
             </button>
           </div>
 
-          <div style={section}>
-            <div style={materialHeader}>
+          <div style={isMobile ? sectionMobile : section}>
+            <div style={isMobile ? materialHeaderMobile : materialHeader}>
               <h3 style={sectionTitle}>📦 Materiali inseriti</h3>
 
               {!showAltroMat && (
@@ -1206,14 +1216,14 @@ export default function InterventiPage() {
             </div>
 
             {showAltroMat && (
-              <div style={manualMaterialBox}>
+              <div style={isMobile ? manualMaterialBoxMobile : manualMaterialBox}>
                 <input
                   placeholder="Codice"
                   value={altroMat.codice}
                   onChange={(e) =>
                     setAltroMat((prev) => ({ ...prev, codice: e.target.value }))
                   }
-                  style={{ ...inputFull, minWidth: 120 }}
+                  style={isMobile ? inputFull : { ...inputFull, minWidth: 120 }}
                 />
 
                 <input
@@ -1225,7 +1235,7 @@ export default function InterventiPage() {
                       descrizione: e.target.value,
                     }))
                   }
-                  style={{ ...inputFull, minWidth: 260, flex: 1 }}
+                  style={isMobile ? inputFull : { ...inputFull, minWidth: 260, flex: 1 }}
                 />
 
                 <input
@@ -1239,7 +1249,7 @@ export default function InterventiPage() {
                       quantita: e.target.value,
                     }))
                   }
-                  style={{ ...inputFull, width: 80 }}
+                  style={isMobile ? inputFull : { ...inputFull, width: 80 }}
                 />
 
                 <button onClick={aggiungiMaterialeManuale} style={secondaryButton}>
@@ -1255,7 +1265,7 @@ export default function InterventiPage() {
             {form.materiali.map((m, i) => {
               if (m.codice === "BOLLA") {
                 return (
-                  <div key={i} style={bollaBox}>
+                  <div key={i} style={isMobile ? bollaBoxMobile : bollaBox}>
                     <div>{m.descrizione}</div>
 
                     <button
@@ -1270,7 +1280,7 @@ export default function InterventiPage() {
               }
 
               return (
-                <div key={i} style={materialRow}>
+                <div key={i} style={isMobile ? materialRowMobile : materialRow}>
                   <div style={{ flex: 1 }}>
                     {m.codice || "-"} — {m.descrizione || "-"}
                   </div>
@@ -1280,7 +1290,7 @@ export default function InterventiPage() {
                     min="1"
                     value={m.quantita}
                     onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
-                    style={{ ...inputFull, width: 70 }}
+                    style={isMobile ? { ...inputFull, width: 90, marginBottom: 0 } : { ...inputFull, width: 70 }}
                   />
 
                   <button onClick={() => eliminaMateriale(i)} style={dangerSmall}>
@@ -1291,7 +1301,7 @@ export default function InterventiPage() {
             })}
           </div>
 
-          <div style={section}>
+          <div style={isMobile ? sectionMobile : section}>
             <h3 style={sectionTitle}>📋 Interventi salvati</h3>
 
             {interventi.length === 0 && (
@@ -1302,7 +1312,7 @@ export default function InterventiPage() {
               <div
                 key={i.id}
                 style={{
-                  ...savedCard,
+                  ...(isMobile ? savedCardMobile : savedCard),
                   border:
                     editingId === i.id ? "2px solid orange" : "1px solid #ccc",
                   background: editingId === i.id ? "#fffaf0" : "white",
@@ -1324,7 +1334,7 @@ export default function InterventiPage() {
                   <b>Materiali:</b> {i.materiali_bollettino?.length || 0}
                 </div>
 
-                <div style={savedButtons}>
+                <div style={isMobile ? savedButtonsMobile : savedButtons}>
                   <button onClick={() => navigate(`/bollettino/${i.id}`)}>
                     👁 Apri
                   </button>
@@ -1366,7 +1376,7 @@ export default function InterventiPage() {
           </div>
         </div>
 
-        <div style={sideColumn}>
+        <div style={isMobile ? sideColumnMobile : sideColumn}>
           <h3 style={{ marginTop: 0 }}>Comandi</h3>
 
           <button
@@ -1436,6 +1446,114 @@ const page = {
   maxWidth: 1600,
   margin: "0 auto",
   boxSizing: "border-box",
+}
+
+const pageMobile = {
+  padding: 8,
+  width: "100%",
+  maxWidth: "100%",
+  margin: "0 auto",
+  boxSizing: "border-box",
+  overflowX: "hidden",
+}
+
+const layoutMobile = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  width: "100%",
+}
+
+const sectionMobile = {
+  background: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: 10,
+  padding: 9,
+  marginBottom: 10,
+  width: "100%",
+  boxSizing: "border-box",
+}
+
+const operatorRowMobile = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  marginBottom: 10,
+  flexWrap: "wrap",
+  width: "100%",
+}
+
+const materialHeaderMobile = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "stretch",
+  gap: 8,
+}
+
+const manualMaterialBoxMobile = {
+  marginTop: 8,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  alignItems: "stretch",
+  border: "1px solid #ddd",
+  padding: 8,
+  borderRadius: 6,
+  background: "#f8f9fa",
+  width: "100%",
+  boxSizing: "border-box",
+}
+
+const bollaBoxMobile = {
+  marginTop: 10,
+  padding: 10,
+  background: "#eef4ff",
+  border: "2px solid #0d6efd",
+  borderRadius: 8,
+  fontWeight: "bold",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "stretch",
+  gap: 10,
+  overflowWrap: "anywhere",
+}
+
+const materialRowMobile = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  flexWrap: "wrap",
+  borderBottom: "1px solid #eee",
+  padding: "8px 0",
+  overflowWrap: "anywhere",
+}
+
+const savedCardMobile = {
+  padding: 10,
+  marginTop: 8,
+  borderRadius: 6,
+  overflowWrap: "anywhere",
+}
+
+const savedButtonsMobile = {
+  marginTop: 10,
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
+}
+
+const sideColumnMobile = {
+  position: "static",
+  order: -1,
+  width: "100%",
+  boxSizing: "border-box",
+  background: "#fff",
+  border: "2px solid #1976d2",
+  borderRadius: 12,
+  padding: 10,
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
 }
 
 const layout = {

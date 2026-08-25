@@ -82,7 +82,7 @@ export default function BolleUploadPage() {
   async function caricaInterventi() {
     const { data, error } = await supabase
       .from("interventi")
-      .select("id, data, descrizione, clienti(nome),email")
+      .select("id, data, descrizione, clienti(nome)")
       .or("archiviato.is.null,archiviato.eq.false")
       .order("data", { ascending: false })
 

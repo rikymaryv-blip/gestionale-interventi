@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { supabase } from "../supabaseClient"
 
 export default function BolleUploadPage() {
+
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const interventoIdDaUrl = searchParams.get("intervento_id")
@@ -18,11 +19,9 @@ export default function BolleUploadPage() {
   const [filtroOperatore, setFiltroOperatore] = useState("")
   const [ricercaCarrello, setRicercaCarrello] = useState("")
   const [importando, setImportando] = useState(false)
-
-  const [conteggioIntervento, setConteggioIntervento] = useState({
-    bolle: 0,
-    righeMateriali: 0,
-  })
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 768 : false
+  )
 
   const oggi = new Date()
   const dueGiorniFa = new Date()
@@ -49,6 +48,16 @@ export default function BolleUploadPage() {
   const [dataA, setDataA] = useState(formatDate(oggi))
 
   useEffect(() => {
+    function aggiornaVista() {
+      setIsMobile(window.innerWidth <= 768)
+    }
+
+    aggiornaVista()
+    window.addEventListener("resize", aggiornaVista)
+    return () => window.removeEventListener("resize", aggiornaVista)
+  }, [])
+
+  useEffect(() => {
     caricaBolle()
     caricaInterventi()
   }, [])
@@ -56,43 +65,8 @@ export default function BolleUploadPage() {
   useEffect(() => {
     if (interventoIdDaUrl) {
       setInterventoSelezionato(interventoIdDaUrl)
-      caricaConteggioIntervento(interventoIdDaUrl)
     }
   }, [interventoIdDaUrl])
-
-  useEffect(() => {
-    const id = interventoIdDaUrl || interventoSelezionato
-
-    if (id) {
-      caricaConteggioIntervento(id)
-    } else {
-      setConteggioIntervento({
-        bolle: 0,
-        righeMateriali: 0,
-      })
-    }
-  }, [interventoSelezionato])
-
-  async function caricaConteggioIntervento(interventoId) {
-    if (!interventoId) return
-
-    const { data, error } = await supabase
-      .from("materiali_bollettino")
-      .select("id, codice")
-      .eq("intervento_id", interventoId)
-
-    if (error) {
-      console.error(error)
-      return
-    }
-
-    const lista = data || []
-
-    setConteggioIntervento({
-      bolle: lista.filter((r) => r.codice === "BOLLA").length,
-      righeMateriali: lista.filter((r) => r.codice !== "BOLLA").length,
-    })
-  }
 
   function tornaAllIntervento() {
     const id = interventoIdDaUrl || interventoSelezionato
@@ -108,13 +82,7 @@ export default function BolleUploadPage() {
   async function caricaInterventi() {
     const { data, error } = await supabase
       .from("interventi")
-      .select(`
-        id,
-        data,
-        descrizione,
-        clienti(nome),
-        cantieri(email)
-      `)
+      .select("id, data, descrizione, clienti(nome),email")
       .or("archiviato.is.null,archiviato.eq.false")
       .order("data", { ascending: false })
 
@@ -127,12 +95,9 @@ export default function BolleUploadPage() {
     setInterventi(data || [])
 
     if (interventoIdDaUrl) {
-      const trovato = (data || []).find(
-        (i) => String(i.id) === String(interventoIdDaUrl)
-      )
+      const trovato = (data || []).find(i => String(i.id) === String(interventoIdDaUrl))
       setInterventoCorrente(trovato || null)
       setInterventoSelezionato(interventoIdDaUrl)
-      caricaConteggioIntervento(interventoIdDaUrl)
     }
   }
 
@@ -140,7 +105,6 @@ export default function BolleUploadPage() {
     const { data, error } = await supabase
       .from("bolle_acquisto")
       .select("*")
-      .or("tipo.is.null,tipo.eq.bolla")
       .order("data", { ascending: false })
       .order("id", { ascending: false })
 
@@ -151,11 +115,11 @@ export default function BolleUploadPage() {
     }
 
     const ordinate = (data || []).sort((a, b) => {
-      const dataAOrd = a.data || ""
-      const dataBOrd = b.data || ""
+      const dataA = a.data || ""
+      const dataB = b.data || ""
 
-      if (dataAOrd !== dataBOrd) {
-        return dataBOrd.localeCompare(dataAOrd)
+      if (dataA !== dataB) {
+        return dataB.localeCompare(dataA)
       }
 
       return Number(b.id || 0) - Number(a.id || 0)
@@ -220,12 +184,12 @@ export default function BolleUploadPage() {
 
   async function aggiornaPreferiti(materiali) {
     const validi = materiali
-      .filter((m) => m.codice || m.descrizione)
-      .map((m) => ({
+      .filter(m => m.codice || m.descrizione)
+      .map(m => ({
         codice: String(m.codice || "").trim(),
         descrizione: String(m.descrizione || "").trim(),
         quantita: Number(m.quantita || 0),
-        prezzo: Number(m.prezzo || 0),
+        prezzo: Number(m.prezzo || 0)
       }))
 
     if (validi.length === 0) return
@@ -240,7 +204,7 @@ export default function BolleUploadPage() {
           codice: m.codice,
           descrizione: m.descrizione,
           quantita: 0,
-          prezzo: 0,
+          prezzo: 0
         }
       }
 
@@ -252,7 +216,7 @@ export default function BolleUploadPage() {
     }
 
     const lista = Object.values(raggruppati)
-    const codici = lista.map((m) => m.codice).filter(Boolean)
+    const codici = lista.map(m => m.codice).filter(Boolean)
 
     if (codici.length === 0) return
 
@@ -268,7 +232,7 @@ export default function BolleUploadPage() {
     }
 
     const mappaEsistenti = new Map(
-      (esistenti || []).map((e) => [String(e.codice), e])
+      (esistenti || []).map(e => [String(e.codice), e])
     )
 
     for (const m of lista) {
@@ -283,7 +247,7 @@ export default function BolleUploadPage() {
             prezzo: Number(m.prezzo || 0),
             volte_usato: 1,
             quantita_totale: Number(m.quantita || 0),
-            ultimo_utilizzo: new Date().toISOString(),
+            ultimo_utilizzo: new Date().toISOString()
           })
 
         if (insertError) {
@@ -304,10 +268,8 @@ export default function BolleUploadPage() {
             descrizione: esistente.descrizione || m.descrizione || null,
             prezzo: prezzoDaSalvare,
             volte_usato: Number(esistente.volte_usato || 0) + 1,
-            quantita_totale:
-              Number(esistente.quantita_totale || 0) +
-              Number(m.quantita || 0),
-            ultimo_utilizzo: new Date().toISOString(),
+            quantita_totale: Number(esistente.quantita_totale || 0) + Number(m.quantita || 0),
+            ultimo_utilizzo: new Date().toISOString()
           })
           .eq("id", esistente.id)
 
@@ -330,7 +292,7 @@ export default function BolleUploadPage() {
       reader.readAsText(file, "ISO-8859-1")
     })
 
-    const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.trim())
+    const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim())
 
     if (lines.length < 2) {
       alert("File vuoto o non valido")
@@ -338,7 +300,7 @@ export default function BolleUploadPage() {
     }
 
     const sep = lines[0].includes(";") ? ";" : ","
-    const split = (line) => line.split(sep).map((v) => v.trim())
+    const split = (line) => line.split(sep).map(v => v.trim())
 
     const grouped = {}
 
@@ -364,7 +326,7 @@ export default function BolleUploadPage() {
           data,
           creatore,
           nome_carrello: nomeCarrello,
-          righe: [],
+          righe: []
         }
       }
 
@@ -386,7 +348,7 @@ export default function BolleUploadPage() {
         descrizione,
         quantita,
         prezzo,
-        totale: quantita * prezzo,
+        totale: quantita * prezzo
       })
     }
 
@@ -408,17 +370,14 @@ export default function BolleUploadPage() {
 
       const { data: saved, error } = await supabase
         .from("bolle_acquisto")
-        .insert([
-          {
-            numero_ordine: b.numero_ordine,
-            numero_ddt: b.numero_ddt,
-            creatore_carrello: b.creatore || null,
-            nome_carrello: b.nome_carrello || null,
-            usata: false,
-            data: b.data || null,
-            tipo: "bolla",
-          },
-        ])
+        .insert([{
+          numero_ordine: b.numero_ordine,
+          numero_ddt: b.numero_ddt,
+          creatore_carrello: b.creatore || null,
+          nome_carrello: b.nome_carrello || null,
+          usata: false,
+          data: b.data || null
+        }])
         .select()
         .single()
 
@@ -428,16 +387,18 @@ export default function BolleUploadPage() {
         continue
       }
 
-      const { error: righeError } = await supabase.from("bolle_righe").insert(
-        b.righe.map((r) => ({
-          bolla_id: saved.id,
-          codice: r.codice,
-          descrizione: r.descrizione,
-          quantita: r.quantita,
-          prezzo: r.prezzo,
-          totale: r.totale,
-        }))
-      )
+      const { error: righeError } = await supabase
+        .from("bolle_righe")
+        .insert(
+          b.righe.map(r => ({
+            bolla_id: saved.id,
+            codice: r.codice,
+            descrizione: r.descrizione,
+            quantita: r.quantita,
+            prezzo: r.prezzo,
+            totale: r.totale
+          }))
+        )
 
       if (righeError) {
         console.error(righeError)
@@ -446,6 +407,7 @@ export default function BolleUploadPage() {
       }
 
       await aggiornaPreferiti(b.righe)
+
       salvate++
     }
 
@@ -482,34 +444,46 @@ export default function BolleUploadPage() {
     setImportando(true)
 
     try {
-      const titoloBolla = {
-        intervento_id: interventoFinale,
-        codice: "BOLLA",
-        descrizione:
-          `--- ORDINE ${selected.numero_ordine || "-"} ` +
-          `| DDT ${selected.numero_ddt || "-"} ` +
-          `| DATA ${formattaDataIt(selected.data)} ---`,
-        quantita: 0,
-        prezzo: 0,
-        totale: 0,
+      const { data: materialiEsistenti, error: checkError } = await supabase
+        .from("materiali_bollettino")
+        .select("id, codice, descrizione")
+        .eq("intervento_id", interventoFinale)
+
+      if (checkError) {
+        console.error(checkError)
+        alert("Errore controllo materiali esistenti: " + checkError.message)
+        return
       }
 
+      const materialiGiaPresenti = new Set(
+        (materialiEsistenti || []).map(m =>
+          `${String(m.codice || "").trim()}_${String(m.descrizione || "").trim()}`
+        )
+      )
+
       const materialiDaInserire = righe
-        .filter((r) => r.codice || r.descrizione)
-        .map((r) => ({
+        .filter(r => r.codice || r.descrizione)
+        .filter(r => {
+          const key = `${String(r.codice || "").trim()}_${String(r.descrizione || "").trim()}`
+          return !materialiGiaPresenti.has(key)
+        })
+        .map(r => ({
           intervento_id: interventoFinale,
           codice: r.codice || "",
           descrizione: r.descrizione || "",
           quantita: Number(r.quantita || 1),
           prezzo: Number(r.prezzo || 0),
-          totale: Number(r.quantita || 1) * Number(r.prezzo || 0),
+          totale: Number(r.quantita || 1) * Number(r.prezzo || 0)
         }))
 
-      const righeFinali = [titoloBolla, ...materialiDaInserire]
+      if (materialiDaInserire.length === 0) {
+        alert("Tutti i materiali di questa bolla risultano già presenti nell’intervento")
+        return
+      }
 
       const { error: insertError } = await supabase
         .from("materiali_bollettino")
-        .insert(righeFinali)
+        .insert(materialiDaInserire)
 
       if (insertError) {
         console.error(insertError)
@@ -524,10 +498,7 @@ export default function BolleUploadPage() {
 
       if (updateError) {
         console.error(updateError)
-        alert(
-          "Materiali inseriti, ma errore nel segnare la bolla come usata: " +
-            updateError.message
-        )
+        alert("Materiali inseriti, ma errore nel segnare la bolla come usata: " + updateError.message)
         return
       }
 
@@ -536,7 +507,7 @@ export default function BolleUploadPage() {
       setSelected(null)
       setRighe([])
       caricaBolle()
-      caricaConteggioIntervento(interventoFinale)
+
     } finally {
       setImportando(false)
     }
@@ -545,9 +516,7 @@ export default function BolleUploadPage() {
   async function annullaImportazione() {
     if (!selected) return
 
-    const conferma = confirm(
-      "Vuoi riattivare questa bolla? I materiali già copiati nell’intervento NON verranno cancellati."
-    )
+    const conferma = confirm("Vuoi riattivare questa bolla? I materiali già copiati nell’intervento NON verranno cancellati.")
     if (!conferma) return
 
     const { error } = await supabase
@@ -562,30 +531,18 @@ export default function BolleUploadPage() {
     }
 
     alert("Bolla riattivata")
-    setSelected((prev) => (prev ? { ...prev, usata: false } : prev))
+    setSelected(prev => prev ? { ...prev, usata: false } : prev)
     caricaBolle()
-
-    const id = interventoIdDaUrl || interventoSelezionato
-    if (id) caricaConteggioIntervento(id)
   }
 
-  const operatori = [
-    ...new Set(bolle.map((b) => b.creatore_carrello).filter(Boolean)),
-  ]
-
-  const carrelli = [
-    ...new Set(bolle.map((b) => b.nome_carrello).filter(Boolean)),
-  ]
+  const operatori = [...new Set(bolle.map(b => b.creatore_carrello).filter(Boolean))]
+  const carrelli = [...new Set(bolle.map(b => b.nome_carrello).filter(Boolean))]
 
   const bolleFiltrate = bolle
-    .filter((b) => {
+    .filter(b => {
       const m1 = !filtroOperatore || b.creatore_carrello === filtroOperatore
       const m2 = (!dataDa || b.data >= dataDa) && (!dataA || b.data <= dataA)
-      const m3 =
-        !ricercaCarrello ||
-        (b.nome_carrello || "")
-          .toLowerCase()
-          .includes(ricercaCarrello.toLowerCase())
+      const m3 = !ricercaCarrello || (b.nome_carrello || "").toLowerCase().includes(ricercaCarrello.toLowerCase())
 
       return m1 && m2 && m3
     })
@@ -609,37 +566,32 @@ export default function BolleUploadPage() {
           padding: 12,
           border: "1px solid #ddd",
           borderRadius: 6,
-          background: "#f8f9fa",
+          background: "#f8f9fa"
         }}
       >
         <h3 style={{ marginTop: 0 }}>Dettaglio bolla</h3>
 
-        <button
-          onClick={() => {
-            setSelected(null)
-            setRighe([])
-          }}
-        >
+        <button onClick={() => {
+          setSelected(null)
+          setRighe([])
+        }}>
           ❌ Chiudi
         </button>
 
         {interventoIdDaUrl ? (
-          <div
-            style={{
-              marginTop: 10,
-              marginBottom: 10,
-              background: "white",
-              border: "1px solid #ddd",
-              padding: 10,
-              borderRadius: 6,
-            }}
-          >
-            Materiali destinati all’intervento:{" "}
+          <div style={{
+            marginTop: 10,
+            marginBottom: 10,
+            background: "white",
+            border: "1px solid #ddd",
+            padding: 10,
+            borderRadius: 6
+          }}>
+            Materiali destinati all’intervento:
+            {" "}
             <b>
               #{interventoIdDaUrl}
-              {interventoCorrente?.clienti?.nome
-                ? ` - ${interventoCorrente.clienti.nome}`
-                : ""}
+              {interventoCorrente?.clienti?.nome ? ` - ${interventoCorrente.clienti.nome}` : ""}
             </b>
 
             <br />
@@ -653,7 +605,7 @@ export default function BolleUploadPage() {
                 border: "none",
                 padding: "8px 12px",
                 borderRadius: 5,
-                cursor: "pointer",
+                cursor: "pointer"
               }}
             >
               ⬅ Torna all’intervento
@@ -666,7 +618,7 @@ export default function BolleUploadPage() {
             style={{ marginLeft: 10 }}
           >
             <option value="">Seleziona intervento</option>
-            {interventi.map((i) => (
+            {interventi.map(i => (
               <option key={i.id} value={i.id}>
                 {formattaDataIt(i.data)} - {i.clienti?.nome} - {i.descrizione}
               </option>
@@ -684,7 +636,7 @@ export default function BolleUploadPage() {
             border: "none",
             padding: "8px 12px",
             borderRadius: 5,
-            cursor: selected?.usata || importando ? "not-allowed" : "pointer",
+            cursor: selected?.usata || importando ? "not-allowed" : "pointer"
           }}
         >
           {importando ? "Importazione..." : "🚀 Importa"}
@@ -700,7 +652,7 @@ export default function BolleUploadPage() {
               border: "none",
               padding: "8px 12px",
               borderRadius: 5,
-              cursor: "pointer",
+              cursor: "pointer"
             }}
           >
             ⬅ Torna all’intervento
@@ -708,40 +660,96 @@ export default function BolleUploadPage() {
         )}
 
         {selected?.usata && (
-          <button onClick={annullaImportazione} style={{ marginLeft: 10 }}>
+          <button
+            onClick={annullaImportazione}
+            style={{ marginLeft: 10 }}
+          >
             ↩ Riattiva bolla
           </button>
         )}
 
         <div style={{ marginTop: 12 }}>
           {righe.length === 0 && (
-            <div
-              style={{
-                padding: 10,
-                background: "white",
-                border: "1px solid #ddd",
-                borderRadius: 6,
-              }}
-            >
+            <div style={{
+              padding: 10,
+              background: "white",
+              border: "1px solid #ddd",
+              borderRadius: 6
+            }}>
               Nessuna riga trovata per questa bolla.
             </div>
           )}
 
           {righe.map((r, i) => (
-            <div
-              key={i}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "140px 1fr 80px",
-                gap: 10,
-                borderBottom: "1px solid #ddd",
-                padding: "6px 0",
-              }}
-            >
-              <div>{r.codice || "-"}</div>
-              <div>{r.descrizione || "-"}</div>
-              <div>Qta: {r.quantita || 0}</div>
-            </div>
+            isMobile ? (
+              <div
+                key={i}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "68px minmax(0, 1fr)",
+                  gap: 10,
+                  border: "1px solid #198754",
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 9,
+                  background: "#effcf4",
+                  boxSizing: "border-box"
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 10,
+                    fontWeight: "bold",
+                    lineHeight: 1.2,
+                    overflowWrap: "anywhere"
+                  }}>
+                    {r.codice || "-"}
+                  </div>
+
+                  <div style={{
+                    marginTop: 8,
+                    fontSize: 11,
+                    color: "#555"
+                  }}>
+                    Qta
+                  </div>
+
+                  <div style={{
+                    fontSize: 16,
+                    fontWeight: "bold",
+                    marginTop: 2
+                  }}>
+                    {r.quantita || 0}
+                  </div>
+                </div>
+
+                <div style={{
+                  minWidth: 0,
+                  fontSize: 15,
+                  lineHeight: 1.4,
+                  whiteSpace: "normal",
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word"
+                }}>
+                  {r.descrizione || "-"}
+                </div>
+              </div>
+            ) : (
+              <div
+                key={i}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "140px 1fr 80px",
+                  gap: 10,
+                  borderBottom: "1px solid #ddd",
+                  padding: "6px 0"
+                }}
+              >
+                <div>{r.codice || "-"}</div>
+                <div>{r.descrizione || "-"}</div>
+                <div>Qta: {r.quantita || 0}</div>
+              </div>
+            )
           ))}
         </div>
       </div>
@@ -749,49 +757,34 @@ export default function BolleUploadPage() {
   }
 
   return (
-    <div style={{ padding: 20, paddingBottom: 90 }}>
+    <div style={isMobile ? { padding: 8, width: "100%", boxSizing: "border-box", overflowX: "hidden" } : { padding: 20 }}>
+
       <h2>📦 Archivio Bolle</h2>
 
-      {(interventoIdDaUrl || interventoSelezionato) && (
-        <div style={contatoreFisso}>
-          <div style={{ fontWeight: "bold" }}>📌 Intervento</div>
-          <div>
-            Bolle: <b>{conteggioIntervento.bolle}</b>
-          </div>
-          <div>
-            Righe materiali: <b>{conteggioIntervento.righeMateriali}</b>
-          </div>
-        </div>
-      )}
-
       {interventoIdDaUrl && (
-        <div
-          style={{
-            background: "#e7f1ff",
-            border: "1px solid #9ec5fe",
-            color: "#084298",
-            padding: 10,
-            borderRadius: 6,
-            marginBottom: 12,
-          }}
-        >
+        <div style={{
+          background: "#e7f1ff",
+          border: "1px solid #9ec5fe",
+          color: "#084298",
+          padding: 10,
+          borderRadius: 6,
+          marginBottom: 12
+        }}>
           <b>Importazione diretta attiva</b>
-
           <div>
-            Stai importando materiali nell’intervento:{" "}
+            Stai importando materiali nell’intervento:
+            {" "}
             <b>
               #{interventoIdDaUrl}
-              {interventoCorrente?.data
-                ? ` - ${formattaDataIt(interventoCorrente.data)}`
-                : ""}
-              {interventoCorrente?.clienti?.nome
-                ? ` - ${interventoCorrente.clienti.nome}`
-                : ""}
+              {interventoCorrente?.data ? ` - ${formattaDataIt(interventoCorrente.data)}` : ""}
+              {interventoCorrente?.clienti?.nome ? ` - ${interventoCorrente.clienti.nome}` : ""}
             </b>
           </div>
 
           {interventoCorrente?.descrizione && (
-            <div>Descrizione: {interventoCorrente.descrizione}</div>
+            <div>
+              Descrizione: {interventoCorrente.descrizione}
+            </div>
           )}
 
           <button
@@ -803,7 +796,7 @@ export default function BolleUploadPage() {
               border: "none",
               padding: "8px 12px",
               borderRadius: 5,
-              cursor: "pointer",
+              cursor: "pointer"
             }}
           >
             ⬅ Torna all’intervento
@@ -818,7 +811,7 @@ export default function BolleUploadPage() {
             marginBottom: 10,
             padding: "8px 12px",
             borderRadius: 5,
-            cursor: "pointer",
+            cursor: "pointer"
           }}
         >
           ⬅ Torna a Interventi
@@ -827,23 +820,16 @@ export default function BolleUploadPage() {
 
       <input type="file" accept=".csv" onChange={handleFile} />
 
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          marginTop: 10,
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+
         <select
           value={filtroOperatore}
           onChange={(e) => setFiltroOperatore(e.target.value)}
+          style={isMobile ? { width: "100%", padding: 8, boxSizing: "border-box" } : undefined}
         >
           <option value="">Tutti operatori</option>
-          {operatori.map((op) => (
-            <option key={op} value={op}>
-              {op}
-            </option>
+          {operatori.map(op => (
+            <option key={op} value={op}>{op}</option>
           ))}
         </select>
 
@@ -852,6 +838,7 @@ export default function BolleUploadPage() {
           type="date"
           value={dataDa}
           onChange={(e) => setDataDa(e.target.value)}
+          style={isMobile ? { flex: 1, minWidth: 0, padding: 8 } : undefined}
         />
 
         <span>A:</span>
@@ -859,6 +846,7 @@ export default function BolleUploadPage() {
           type="date"
           value={dataA}
           onChange={(e) => setDataA(e.target.value)}
+          style={isMobile ? { flex: 1, minWidth: 0, padding: 8 } : undefined}
         />
 
         <div style={{ position: "relative" }}>
@@ -866,22 +854,19 @@ export default function BolleUploadPage() {
             placeholder="🔍 Cerca carrello..."
             value={ricercaCarrello}
             onChange={(e) => setRicercaCarrello(e.target.value)}
+            style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8 } : undefined}
           />
 
           {ricercaCarrello && (
-            <div
-              style={{
-                position: "absolute",
-                background: "white",
-                border: "1px solid #ccc",
-                zIndex: 20,
-                minWidth: 220,
-              }}
-            >
+            <div style={{
+              position: "absolute",
+              background: "white",
+              border: "1px solid #ccc",
+              zIndex: 20,
+              minWidth: 220
+            }}>
               {carrelli
-                .filter((c) =>
-                  c.toLowerCase().includes(ricercaCarrello.toLowerCase())
-                )
+                .filter(c => c.toLowerCase().includes(ricercaCarrello.toLowerCase()))
                 .slice(0, 10)
                 .map((c, i) => (
                   <div
@@ -893,9 +878,7 @@ export default function BolleUploadPage() {
                   </div>
                 ))}
 
-              {carrelli.filter((c) =>
-                c.toLowerCase().includes(ricercaCarrello.toLowerCase())
-              ).length === 0 && (
+              {carrelli.filter(c => c.toLowerCase().includes(ricercaCarrello.toLowerCase())).length === 0 && (
                 <div style={{ padding: 6, color: "#777" }}>
                   Nessun carrello trovato
                 </div>
@@ -904,59 +887,49 @@ export default function BolleUploadPage() {
           )}
         </div>
 
-        <button
-          onClick={() => {
-            setFiltroOperatore("")
-            setDataDa("")
-            setDataA("")
-            setRicercaCarrello("")
-          }}
-        >
+        <button onClick={() => {
+          setFiltroOperatore("")
+          setDataDa("")
+          setDataA("")
+          setRicercaCarrello("")
+        }}>
           Reset
         </button>
 
-        <button onClick={caricaBolle}>🔄 Aggiorna</button>
+        <button onClick={caricaBolle}>
+          🔄 Aggiorna
+        </button>
 
         <span>
           Risultati: <b>{bolleFiltrate.length}</b>
         </span>
+
       </div>
 
       <hr />
 
       {bolleFiltrate.length === 0 && (
-        <div
-          style={{
-            padding: 12,
-            border: "1px solid #ddd",
-            borderRadius: 6,
-            background: "#fff",
-          }}
-        >
+        <div style={{
+          padding: 12,
+          border: "1px solid #ddd",
+          borderRadius: 6,
+          background: "#fff"
+        }}>
           Nessuna bolla trovata.
         </div>
       )}
 
-      {bolleFiltrate.map((b) => (
+      {bolleFiltrate.map(b => (
         <div key={b.id}>
           <div
             onClick={() => apriBolla(b)}
             style={{
-              border:
-                selected?.id === b.id
-                  ? "2px solid #0d6efd"
-                  : b.usata
-                  ? "2px solid green"
-                  : "1px solid #ccc",
-              background: b.usata
-                ? "#e8f5e9"
-                : selected?.id === b.id
-                ? "#e7f1ff"
-                : "white",
+              border: selected?.id === b.id ? "2px solid #0d6efd" : b.usata ? "2px solid green" : "1px solid #ccc",
+              background: b.usata ? "#e8f5e9" : selected?.id === b.id ? "#e7f1ff" : "white",
               padding: 10,
               marginTop: 5,
               cursor: "pointer",
-              borderRadius: 6,
+              borderRadius: 6
             }}
           >
             <b>{b.numero_ordine}</b> | DDT: {b.numero_ddt}
@@ -969,20 +942,7 @@ export default function BolleUploadPage() {
           {selected?.id === b.id && renderDettaglioBolla()}
         </div>
       ))}
+
     </div>
   )
-}
-
-const contatoreFisso = {
-  position: "fixed",
-  right: 12,
-  bottom: 12,
-  zIndex: 999,
-  background: "#ffffff",
-  border: "2px solid #0d6efd",
-  borderRadius: 10,
-  padding: "8px 12px",
-  boxShadow: "0 3px 12px rgba(0,0,0,0.18)",
-  fontSize: 13,
-  lineHeight: 1.4,
 }

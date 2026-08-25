@@ -2159,7 +2159,7 @@ export default function CarrelliPage() {
                 >
                   <div style={{
                     display: "grid",
-                    gridTemplateColumns: "78px 1fr",
+                    gridTemplateColumns: "68px minmax(0, 1fr)",
                     gap: 10,
                     alignItems: "start"
                   }}>
@@ -2189,7 +2189,9 @@ export default function CarrelliPage() {
                           border: "1px solid #bbb",
                           borderRadius: 6,
                           fontWeight: "bold",
-                          fontSize: 11
+                          fontSize: 10,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis"
                         }}
                       />
 
@@ -2226,17 +2228,22 @@ export default function CarrelliPage() {
                           aggiornaCampoRiga(rigaId, "descrizione", e.target.value)
                         }
                         placeholder="Descrizione"
-                        rows={3}
+                        rows={4}
+                        wrap="soft"
                         style={{
                           width: "100%",
-                          minHeight: 72,
+                          minHeight: 92,
                           resize: "vertical",
-                          padding: 8,
+                          padding: 9,
                           boxSizing: "border-box",
                           border: "1px solid #bbb",
-                          borderRadius: 6,
+                          borderRadius: 7,
+                          background: "white",
                           fontSize: 15,
-                          lineHeight: 1.3
+                          lineHeight: 1.35,
+                          whiteSpace: "pre-wrap",
+                          overflowWrap: "anywhere",
+                          wordBreak: "break-word"
                         }}
                       />
 

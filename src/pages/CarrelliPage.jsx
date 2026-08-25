@@ -2135,25 +2135,23 @@ export default function CarrelliPage() {
           {righeFiltrate.map((r) => {
             const giaPresente = materialeGiaPresente(r)
             const rigaId = idRigaCarrello(r)
+            const selezionata = rigaSelezionata(r)
 
             return (
               <div
                 key={rigaId}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "72px minmax(0, 1fr)",
-                  gap: 10,
                   border: giaPresente
                     ? "2px solid #ffc107"
-                    : rigaSelezionata(r)
+                    : selezionata
                       ? "2px solid #0d6efd"
                       : "1px solid #198754",
                   borderRadius: 10,
-                  padding: 10,
+                  padding: "12px 14px",
                   marginBottom: 10,
                   background: giaPresente
                     ? "#fff8db"
-                    : rigaSelezionata(r)
+                    : selezionata
                       ? "#e7f1ff"
                       : "#effcf4",
                   boxSizing: "border-box",
@@ -2162,20 +2160,21 @@ export default function CarrelliPage() {
               >
                 <div
                   style={{
-                    minWidth: 0,
-                    borderRight: "1px solid #d9e8df",
-                    paddingRight: 7
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap"
                   }}
                 >
                   <input
                     type="checkbox"
-                    checked={rigaSelezionata(r)}
+                    checked={selezionata}
                     onChange={() => toggleRigaSelezionata(r)}
                     style={{
                       width: 22,
                       height: 22,
                       cursor: "pointer",
-                      marginBottom: 8
+                      marginRight: 2
                     }}
                   />
 
@@ -2185,28 +2184,92 @@ export default function CarrelliPage() {
                       aggiornaCampoRiga(rigaId, "codice", e.target.value)
                     }
                     placeholder="Codice"
-                    title={r.codice || ""}
                     style={{
-                      width: "100%",
-                      padding: "6px 5px",
+                      minWidth: 150,
+                      flex: "0 1 220px",
+                      padding: "5px 7px",
                       boxSizing: "border-box",
-                      border: "1px solid #bbb",
+                      border: "1px solid #b8c8bd",
                       borderRadius: 6,
+                      background: "rgba(255,255,255,0.75)",
                       fontWeight: "bold",
-                      fontSize: 10
+                      fontSize: 16
                     }}
                   />
 
-                  <label
-                    style={{
-                      display: "block",
-                      marginTop: 8,
-                      fontSize: 10,
-                      color: "#555",
-                      fontWeight: "bold"
-                    }}
-                  >
-                    Qta
+                  {giaPresente && (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        background: "#198754",
+                        color: "white",
+                        borderRadius: 999,
+                        padding: "4px 9px",
+                        fontSize: 12,
+                        fontWeight: "bold"
+                      }}
+                    >
+                      ● GIÀ USATO
+                    </span>
+                  )}
+
+                  {selected?.usata && (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        background: "#0d6efd",
+                        color: "white",
+                        borderRadius: 999,
+                        padding: "4px 9px",
+                        fontSize: 12,
+                        fontWeight: "bold"
+                      }}
+                    >
+                      CARRELLO USATO
+                    </span>
+                  )}
+                </div>
+
+                <textarea
+                  value={r.descrizione || ""}
+                  onChange={(e) =>
+                    aggiornaCampoRiga(rigaId, "descrizione", e.target.value)
+                  }
+                  placeholder="Descrizione"
+                  rows={2}
+                  wrap="soft"
+                  style={{
+                    width: "100%",
+                    minHeight: 54,
+                    resize: "vertical",
+                    marginTop: 7,
+                    padding: "6px 8px",
+                    boxSizing: "border-box",
+                    border: "1px solid transparent",
+                    borderRadius: 6,
+                    background: "transparent",
+                    fontSize: 16,
+                    lineHeight: 1.35,
+                    color: "#111",
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word"
+                  }}
+                />
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    flexWrap: "wrap",
+                    marginTop: 5,
+                    fontSize: 13,
+                    color: "#555"
+                  }}
+                >
+                  <label style={{ fontWeight: "bold" }}>
+                    Qta:
                     <input
                       type="number"
                       min="0"
@@ -2216,144 +2279,90 @@ export default function CarrelliPage() {
                         aggiornaCampoRiga(rigaId, "quantita", e.target.value)
                       }
                       style={{
-                        width: "100%",
-                        marginTop: 3,
-                        padding: "6px 5px",
-                        boxSizing: "border-box",
+                        width: 70,
+                        marginLeft: 5,
+                        padding: 5,
                         border: "1px solid #bbb",
-                        borderRadius: 6,
-                        fontSize: 14
+                        borderRadius: 5
                       }}
                     />
                   </label>
-                </div>
-
-                <div style={{ minWidth: 0 }}>
-                  <textarea
-                    value={r.descrizione || ""}
-                    onChange={(e) =>
-                      aggiornaCampoRiga(rigaId, "descrizione", e.target.value)
-                    }
-                    placeholder="Descrizione"
-                    rows={3}
-                    wrap="soft"
-                    style={{
-                      width: "100%",
-                      minHeight: 78,
-                      resize: "vertical",
-                      padding: 9,
-                      boxSizing: "border-box",
-                      border: "1px solid #bbb",
-                      borderRadius: 7,
-                      background: "white",
-                      fontSize: 15,
-                      lineHeight: 1.35,
-                      whiteSpace: "pre-wrap",
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word"
-                    }}
-                  />
 
                   {mostraPrezzi && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        display: "flex",
-                        gap: 10,
-                        flexWrap: "wrap",
-                        alignItems: "center"
-                      }}
-                    >
-                      <label style={{ fontSize: 12, fontWeight: "bold" }}>
-                        Prezzo
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={r.prezzo || ""}
-                          onChange={(e) =>
-                            aggiornaCampoRiga(rigaId, "prezzo", e.target.value)
-                          }
-                          style={{
-                            width: 95,
-                            padding: 6,
-                            marginLeft: 5,
-                            border: "1px solid #bbb",
-                            borderRadius: 6
-                          }}
-                        />
-                      </label>
-
-                      <span
+                    <label style={{ fontWeight: "bold" }}>
+                      Prezzo:
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={r.prezzo || ""}
+                        onChange={(e) =>
+                          aggiornaCampoRiga(rigaId, "prezzo", e.target.value)
+                        }
                         style={{
-                          fontSize: 12,
-                          color: "#555",
-                          fontWeight: "bold"
+                          width: 90,
+                          marginLeft: 5,
+                          padding: 5,
+                          border: "1px solid #bbb",
+                          borderRadius: 5
                         }}
-                      >
-                        {formatPrezzo(r.prezzo)}
-                      </span>
-                    </div>
+                      />
+                    </label>
                   )}
 
-                  {giaPresente && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        display: "inline-block",
-                        background: "#ffc107",
-                        color: "#222",
-                        borderRadius: 999,
-                        padding: "4px 8px",
-                        fontSize: 12,
-                        fontWeight: "bold"
-                      }}
-                    >
-                      ⚠️ GIÀ PRESENTE
-                    </div>
+                  {mostraPrezzi && (
+                    <span>
+                      Totale:{" "}
+                      <b>
+                        {formatPrezzo(
+                          Number(r.quantita || 0) * Number(r.prezzo || 0)
+                        )}
+                      </b>
+                    </span>
                   )}
+                </div>
 
-                  <div
+                <div
+                  style={{
+                    marginTop: 9,
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap"
+                  }}
+                >
+                  <button
+                    onClick={() => salvaRigaCarrello(r)}
+                    disabled={salvandoRigaId === r.id}
                     style={{
-                      marginTop: 10,
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap"
+                      background: "#198754",
+                      color: "white",
+                      border: "none",
+                      padding: "7px 11px",
+                      borderRadius: 6,
+                      cursor:
+                        salvandoRigaId === r.id
+                          ? "not-allowed"
+                          : "pointer",
+                      fontWeight: "bold"
                     }}
                   >
-                    <button
-                      onClick={() => salvaRigaCarrello(r)}
-                      disabled={salvandoRigaId === r.id}
-                      style={{
-                        background: "#198754",
-                        color: "white",
-                        border: "none",
-                        padding: "8px 10px",
-                        borderRadius: 6,
-                        cursor:
-                          salvandoRigaId === r.id
-                            ? "not-allowed"
-                            : "pointer",
-                        fontWeight: "bold"
-                      }}
-                    >
-                      {salvandoRigaId === r.id ? "Salvo..." : "💾 Salva"}
-                    </button>
+                    {salvandoRigaId === r.id ? "Salvo..." : "💾 Salva"}
+                  </button>
 
-                    <button
-                      onClick={() => eliminaRigaCarrello(r)}
-                      style={{
-                        background: "#dc3545",
-                        color: "white",
-                        border: "none",
-                        padding: "8px 10px",
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        fontWeight: "bold"
-                      }}
-                    >
-                      🗑 Elimina
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => eliminaRigaCarrello(r)}
+                    style={{
+                      background: "#dc3545",
+                      color: "white",
+                      border: "none",
+                      padding: "7px 11px",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      fontWeight: "bold"
+                    }}
+                  >
+                    🗑 Elimina
+                  </button>
                 </div>
               </div>
             )

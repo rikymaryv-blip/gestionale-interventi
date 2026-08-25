@@ -26,7 +26,7 @@ import OreOperatoriExcelPage from "./pages/OreOperatoriExcelPage"
 import PuntiLucePage from "./pages/PuntiLucePage"
 import PuntiLuceVociPage from "./pages/PuntiLuceVociPage"
 import PuntiLuceStanzeTipoPage from "./pages/PuntiLuceStanzeTipoPage"
-import ListaOrdinePage from "./pages/ListaOrdinePage"
+import PuntiLuceNoteClientiPage from "./pages/PuntiLuceNoteClientiPage"
 
 // MENU
 function Menu() {
@@ -119,6 +119,7 @@ function Menu() {
       return (
         <div style={subMenuBar}>
           {btn("/punti-luce", "Progetto Punti Luce", "💡")}
+          {btn("/punti-luce-note-clienti", "Note Clienti", "📁")}
           {btn("/punti-luce-voci", "Voci Punti Luce", "⚙️")}
           {btn("/punti-luce-stanze-tipo", "Stanze Tipo", "🏠")}
         </div>
@@ -140,7 +141,6 @@ function Menu() {
           {btn("/bolle", "Bolle", "📥")}
           {btn("/carrelli", "Carrelli", "🛒")}
           {btn("/preferiti", "Preferiti", "⭐")}
-          {btn("/lista-ordine", "Lista Ordine", "🧾")}
           {btn("/listino", "Listino", "📦")}
         </div>
       )
@@ -193,6 +193,7 @@ export default function App() {
           <Route path="/" element={<CalendarMonth />} />
           <Route path="/interventi" element={<InterventiPage />} />
           <Route path="/punti-luce" element={<PuntiLucePage />} />
+          <Route path="/punti-luce-note-clienti" element={<PuntiLuceNoteClientiPage />} />
           <Route path="/punti-luce-voci" element={<PuntiLuceVociPage />} />
           <Route path="/punti-luce-stanze-tipo" element={<PuntiLuceStanzeTipoPage />} />
           <Route path="/clienti" element={<ClientiPage />} />
@@ -209,7 +210,6 @@ export default function App() {
           <Route path="/bolle" element={<BolleUploadPage />} />
           <Route path="/carrelli" element={<CarrelliPage />} />
           <Route path="/preferiti" element={<PreferitiPage />} />
-          <Route path="/lista-ordine" element={<ListaOrdinePage />} />
           <Route path="/ore-operatori-excel" element={<OreOperatoriExcelPage />} />
           <Route path="/test" element={<TestCantieri />} />
           <Route path="/storico-interventi" element={<StoricoInterventiPage />} />

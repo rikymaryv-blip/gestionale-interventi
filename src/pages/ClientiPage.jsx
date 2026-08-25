@@ -22,6 +22,9 @@ export default function ClientiPage() {
   const [search, setSearch] = useState("")
   const [clienteAperto, setClienteAperto] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 768 : false
+  )
 
   const [form, setForm] = useState({
     id: null,
@@ -34,6 +37,16 @@ export default function ClientiPage() {
 
   useEffect(() => {
     loadClienti()
+  }, [])
+
+  useEffect(() => {
+    function aggiornaVista() {
+      setIsMobile(window.innerWidth <= 768)
+    }
+
+    aggiornaVista()
+    window.addEventListener("resize", aggiornaVista)
+    return () => window.removeEventListener("resize", aggiornaVista)
   }, [])
 
   async function loadClienti() {
@@ -296,11 +309,11 @@ export default function ClientiPage() {
   )
 
   return (
-    <div style={page}>
-      <div style={topBar}>
-        <h2 style={{ margin: 0 }}>👥 Anagrafica clienti</h2>
+    <div style={isMobile ? pageMobile : page}>
+      <div style={isMobile ? topBarMobile : topBar}>
+        <h2 style={isMobile ? titleMobile : { margin: 0 }}>👥 Anagrafica clienti</h2>
 
-        <div style={topButtons}>
+        <div style={isMobile ? topButtonsMobile : topButtons}>
           <button onClick={() => navigate("/interventi")} style={lightBtn}>
             ↩️ Interventi
           </button>
@@ -311,8 +324,8 @@ export default function ClientiPage() {
         </div>
       </div>
 
-      <div style={layout}>
-        <div style={leftColumn}>
+      <div style={isMobile ? layoutMobile : layout}>
+        <div style={isMobile ? leftColumnMobile : leftColumn}>
           <div style={searchBox}>
             <input
               placeholder="🔍 Cerca cliente..."
@@ -335,7 +348,7 @@ export default function ClientiPage() {
 
             return (
               <div key={c.id} style={clienteCard}>
-                <div style={clienteHeader}>
+                <div style={isMobile ? clienteHeaderMobile : clienteHeader}>
                   <div
                     onClick={() => apriChiudiCliente(c.id)}
                     style={{ flex: 1, cursor: "pointer" }}
@@ -347,7 +360,7 @@ export default function ClientiPage() {
                     </div>
                   </div>
 
-                  <div style={cardActions}>
+                  <div style={isMobile ? cardActionsMobile : cardActions}>
                     <button onClick={() => modificaCliente(c)} style={miniBtn}>
                       ✏️
                     </button>
@@ -368,7 +381,7 @@ export default function ClientiPage() {
                       <strong>P.IVA:</strong> {c.piva || "-"}
                     </div>
 
-                    <div style={buttonRow}>
+                    <div style={isMobile ? buttonRowMobile : buttonRow}>
                       <button onClick={() => modificaCliente(c)} style={editBtn}>
                         ✏️ Modifica cliente
                       </button>
@@ -421,7 +434,7 @@ export default function ClientiPage() {
           })}
         </div>
 
-        <div style={rightColumn}>
+        <div style={isMobile ? rightColumnMobile : rightColumn}>
           <h3 style={{ marginTop: 0 }}>
             {form.id ? "✏️ Modifica cliente" : "➕ Nuovo cliente"}
           </h3>
@@ -778,4 +791,74 @@ const miniDangerBtn = {
   padding: "5px 8px",
   borderRadius: 6,
   cursor: "pointer",
+}
+
+/* ===== Adattamento telefono =====
+   Su PC resta la grafica originale.
+   Sotto 768 px le due colonne diventano una sola e i comandi
+   vengono ridimensionati per evitare sovrapposizioni.
+*/
+const pageMobile = {
+  ...page,
+  padding: 8,
+  width: "100%",
+  maxWidth: "100%",
+  overflowX: "hidden",
+}
+
+const titleMobile = {
+  margin: 0,
+  fontSize: 22,
+  lineHeight: 1.2,
+  width: "100%",
+}
+
+const topBarMobile = {
+  ...topBar,
+  flexDirection: "column",
+  alignItems: "stretch",
+  gap: 8,
+}
+
+const topButtonsMobile = {
+  ...topButtons,
+  width: "100%",
+}
+
+const layoutMobile = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 12,
+  alignItems: "start",
+  width: "100%",
+}
+
+const leftColumnMobile = {
+  ...leftColumn,
+  width: "100%",
+}
+
+const rightColumnMobile = {
+  ...rightColumn,
+  position: "static",
+  top: "auto",
+  width: "100%",
+  boxSizing: "border-box",
+  padding: 10,
+}
+
+const clienteHeaderMobile = {
+  ...clienteHeader,
+  padding: 10,
+  alignItems: "flex-start",
+}
+
+const cardActionsMobile = {
+  ...cardActions,
+  flexShrink: 0,
+}
+
+const buttonRowMobile = {
+  ...buttonRow,
+  flexDirection: "column",
 }

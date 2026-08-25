@@ -45,8 +45,7 @@ function creaStanzaVuota(nome = "") {
       "506": 0,
       "507": 0
     },
-    punti: [],
-    linee: []
+    punti: []
   }
 }
 
@@ -65,17 +64,16 @@ function creaLineaVuota() {
     lunghezza: 1,
     sezione: "1.5",
     numeroFili: 3,
-    composizione: "",
     note: ""
   }
 }
 
-function creaMatassaVuota() {
+function creaMovimentoFiloVuoto() {
   return {
+    movimento: "portato",
     sezione: "1.5",
     colore: "",
-    metriIniziali: 100,
-    metriRimasti: 100,
+    metri: 100,
     note: ""
   }
 }
@@ -107,9 +105,13 @@ export default function PuntiLucePage() {
   const [selezioni, setSelezioni] = useState({})
   const [messaggio, setMessaggio] = useState("")
 
+  const [lineeGenerali, setLineeGenerali] = useState([])
   const [nuovaLinea, setNuovaLinea] = useState(() => creaLineaVuota())
-  const [matasse, setMatasse] = useState([])
-  const [nuovaMatassa, setNuovaMatassa] = useState(() => creaMatassaVuota())
+
+  const [movimentiFilo, setMovimentiFilo] = useState([])
+  const [nuovoMovimentoFilo, setNuovoMovimentoFilo] = useState(() =>
+    creaMovimentoFiloVuoto()
+  )
 
   useEffect(() => {
     caricaClienti()
@@ -127,67 +129,225 @@ export default function PuntiLucePage() {
   }, [messaggio])
 
   useEffect(() => {
-    if (!clienteId || !serie) {
-      setStanze([])
-      setMatasse([])
-      setStanzaIdCorrente("")
+    let annullato = false
+
+    async function caricaProgetto() {
+      if (!clienteId || !serie) {
+        setStanze([])
+        setLineeGenerali([])
+        setMovimentiFilo([])
+        setStanzaIdCorrente("")
+        setProgettoCaricato(false)
+        setUltimoSalvataggio("")
+        resetInserimentoMateriali()
+        return
+      }
+
       setProgettoCaricato(false)
-      resetInserimentoMateriali()
-      return
-    }
+      setUltimoSalvataggio("")
 
-    const salvato = localStorage.getItem(getStorageKey(clienteId, serie))
+      let progetto = null
+      let arrivatoDaTablet = false
 
-    if (salvato) {
-      try {
-        const progetto = JSON.parse(salvato)
+      const { data: progettoOnline, error: erroreOnline } = await supabase
+        .from("punti_luce_progetti")
+        .select("dati, aggiornato_il")
+        .eq("cliente_id", clienteId)
+        .eq("serie", serie)
+        .maybeSingle()
+
+      if (annullato) return
+
+      if (erroreOnline) {
+        console.error("Errore caricamento progetto online:", erroreOnline)
+      }
+
+      if (progettoOnline?.dati) {
+        progetto = progettoOnline.dati
+
+        if (progettoOnline.aggiornato_il) {
+          setUltimoSalvataggio(
+            new Date(progettoOnline.aggiornato_il).toLocaleTimeString()
+          )
+        }
+      } else {
+        const salvatoLocale = localStorage.getItem(
+          getStorageKey(clienteId, serie)
+        )
+
+        if (salvatoLocale) {
+          try {
+            progetto = JSON.parse(salvatoLocale)
+            arrivatoDaTablet = true
+          } catch (error) {
+            console.error("Errore lettura progetto locale:", error)
+          }
+        }
+      }
+
+      if (progetto) {
         const stanzeSalvate = Array.isArray(progetto.stanze)
           ? progetto.stanze.map((stanza) => ({
               ...stanza,
-              punti: Array.isArray(stanza.punti) ? stanza.punti : [],
-              linee: Array.isArray(stanza.linee) ? stanza.linee : []
+              punti: Array.isArray(stanza.punti) ? stanza.punti : []
             }))
           : []
 
+        const lineeVecchie = Array.isArray(progetto.stanze)
+          ? progetto.stanze.flatMap((stanza) =>
+              Array.isArray(stanza.linee) ? stanza.linee : []
+            )
+          : []
+
+        const lineeSalvate = Array.isArray(progetto.lineeGenerali)
+          ? progetto.lineeGenerali
+          : lineeVecchie
+
+        let movimentiSalvati = Array.isArray(progetto.movimentiFilo)
+          ? progetto.movimentiFilo
+          : []
+
+        if (
+          movimentiSalvati.length === 0 &&
+          Array.isArray(progetto.matasse)
+        ) {
+          movimentiSalvati = progetto.matasse.flatMap((matassa) => {
+            const movimenti = []
+            const iniziali = Number(matassa.metriIniziali || 0)
+            const rimasti = Number(matassa.metriRimasti || 0)
+
+            if (iniziali > 0) {
+              movimenti.push({
+                id: creaId(),
+                movimento: "portato",
+                sezione: matassa.sezione || "",
+                colore: matassa.colore || "",
+                metri: iniziali,
+                note: matassa.note || ""
+              })
+            }
+
+            if (rimasti > 0) {
+              movimenti.push({
+                id: creaId(),
+                movimento: "tolto",
+                sezione: matassa.sezione || "",
+                colore: matassa.colore || "",
+                metri: rimasti,
+                note: "Riportato dal cantiere"
+              })
+            }
+
+            return movimenti
+          })
+        }
+
         setStanze(stanzeSalvate)
-        setMatasse(Array.isArray(progetto.matasse) ? progetto.matasse : [])
+        setLineeGenerali(lineeSalvate)
+        setMovimentiFilo(movimentiSalvati)
         setStanzaIdCorrente(stanzeSalvate[0]?.id || "")
-      } catch (error) {
-        console.error("Errore lettura progetto:", error)
+
+        if (arrivatoDaTablet) {
+          const adesso = new Date().toISOString()
+          const datiDaSalvare = {
+            clienteId,
+            serie,
+            stanze: stanzeSalvate,
+            lineeGenerali: lineeSalvate,
+            movimentiFilo: movimentiSalvati,
+            aggiornatoIl: adesso
+          }
+
+          const { error: erroreMigrazione } = await supabase
+            .from("punti_luce_progetti")
+            .upsert(
+              {
+                cliente_id: clienteId,
+                serie,
+                dati: datiDaSalvare,
+                aggiornato_il: adesso
+              },
+              { onConflict: "cliente_id,serie" }
+            )
+
+          if (annullato) return
+
+          if (erroreMigrazione) {
+            console.error("Errore trasferimento progetto online:", erroreMigrazione)
+            setMessaggio("Progetto locale caricato, ma non ancora trasferito online")
+          } else {
+            setUltimoSalvataggio(new Date().toLocaleTimeString())
+            setMessaggio("Progetto del tablet trasferito online")
+          }
+        }
+      } else {
         setStanze([])
-        setMatasse([])
+        setLineeGenerali([])
+        setMovimentiFilo([])
         setStanzaIdCorrente("")
       }
-    } else {
-      setStanze([])
-      setMatasse([])
-      setStanzaIdCorrente("")
+
+      resetInserimentoMateriali()
+      setProgettoCaricato(true)
     }
 
-    resetInserimentoMateriali()
-    setProgettoCaricato(true)
+    caricaProgetto()
+
+    return () => {
+      annullato = true
+    }
   }, [clienteId, serie])
 
   useEffect(() => {
     if (!progettoCaricato || !clienteId || !serie) return
 
-    const timer = window.setTimeout(() => {
+    const timer = window.setTimeout(async () => {
+      const adesso = new Date().toISOString()
+      const progetto = {
+        clienteId,
+        serie,
+        stanze,
+        lineeGenerali,
+        movimentiFilo,
+        aggiornatoIl: adesso
+      }
+
+      // Manteniamo anche una copia locale di sicurezza sul dispositivo.
       localStorage.setItem(
         getStorageKey(clienteId, serie),
-        JSON.stringify({
-          clienteId,
-          serie,
-          stanze,
-          matasse,
-          aggiornatoIl: new Date().toISOString()
-        })
+        JSON.stringify(progetto)
       )
 
+      const { error } = await supabase
+        .from("punti_luce_progetti")
+        .upsert(
+          {
+            cliente_id: clienteId,
+            serie,
+            dati: progetto,
+            aggiornato_il: adesso
+          },
+          { onConflict: "cliente_id,serie" }
+        )
+
+      if (error) {
+        console.error("Errore salvataggio progetto online:", error)
+        setUltimoSalvataggio("ERRORE")
+        return
+      }
+
       setUltimoSalvataggio(new Date().toLocaleTimeString())
-    }, 350)
+    }, 500)
 
     return () => window.clearTimeout(timer)
-  }, [stanze, matasse, clienteId, serie, progettoCaricato])
+  }, [
+    stanze,
+    lineeGenerali,
+    movimentiFilo,
+    clienteId,
+    serie,
+    progettoCaricato
+  ])
 
   async function caricaClienti() {
     const { data, error } = await supabase
@@ -344,7 +504,6 @@ export default function PuntiLucePage() {
   function resetInserimentoMateriali() {
     setCapitoloAperto("")
     setSelezioni({})
-    setNuovaLinea(creaLineaVuota())
   }
 
   function preparaCapitolo(capitolo) {
@@ -643,8 +802,8 @@ export default function PuntiLucePage() {
   }
 
   function aggiungiLinea() {
-    if (!stanzaCorrente) {
-      alert("Crea o seleziona una stanza")
+    if (!clienteId || !serie) {
+      alert("Seleziona cliente e serie civile")
       return
     }
 
@@ -673,91 +832,121 @@ export default function PuntiLucePage() {
       lunghezza,
       sezione: String(nuovaLinea.sezione || "").trim(),
       numeroFili,
-      composizione: String(nuovaLinea.composizione || "").trim(),
       note: String(nuovaLinea.note || "").trim()
     }
 
-    aggiornaStanzaCorrente({
-      linee: [...(stanzaCorrente.linee || []), linea]
-    })
-
+    setLineeGenerali((precedenti) => [...precedenti, linea])
     setNuovaLinea(creaLineaVuota())
+
     setMessaggio(
-      `Aggiunta linea "${descrizione}": ${formatoNumero(lunghezza)} m × ${numeroFili} fili = ${formatoNumero(
-        metriConduttoreLinea(linea)
-      )} m di conduttore`
+      `Aggiunta linea "${descrizione}": ${formatoNumero(
+        lunghezza
+      )} m di linea`
+    )
+  }
+
+  function aggiornaLinea(id, campo, valore) {
+    setLineeGenerali((precedenti) =>
+      precedenti.map((linea) =>
+        String(linea.id) === String(id)
+          ? {
+              ...linea,
+              [campo]:
+                campo === "lunghezza" || campo === "numeroFili"
+                  ? Math.max(0, Number(valore || 0))
+                  : valore
+            }
+          : linea
+      )
     )
   }
 
   function eliminaLinea(id) {
-    if (!stanzaCorrente) return
-
-    aggiornaStanzaCorrente({
-      linee: (stanzaCorrente.linee || []).filter(
-        (linea) => String(linea.id) !== String(id)
-      )
-    })
+    setLineeGenerali((precedenti) =>
+      precedenti.filter((linea) => String(linea.id) !== String(id))
+    )
   }
 
-  function aggiungiMatassa() {
+  function aggiungiMovimentoFilo() {
     if (!clienteId || !serie) {
       alert("Seleziona cliente e serie civile")
       return
     }
 
-    const metriIniziali = Number(nuovaMatassa.metriIniziali || 0)
-    const metriRimasti = Number(nuovaMatassa.metriRimasti || 0)
+    const metri = Number(nuovoMovimentoFilo.metri || 0)
 
-    if (!String(nuovaMatassa.sezione || "").trim()) {
-      alert("Inserisci la sezione del filo")
+    if (metri <= 0) {
+      alert("Inserisci i metri")
       return
     }
 
-    if (metriIniziali <= 0) {
-      alert("Inserisci i metri iniziali della matassa")
-      return
-    }
-
-    if (metriRimasti < 0 || metriRimasti > metriIniziali) {
-      alert("I metri rimasti devono essere compresi tra 0 e i metri iniziali")
-      return
-    }
-
-    const matassa = {
+    const movimento = {
       id: creaId(),
-      sezione: String(nuovaMatassa.sezione).trim(),
-      colore: String(nuovaMatassa.colore || "").trim(),
-      metriIniziali,
-      metriRimasti,
-      note: String(nuovaMatassa.note || "").trim()
+      movimento:
+        nuovoMovimentoFilo.movimento === "tolto" ? "tolto" : "portato",
+      sezione: String(nuovoMovimentoFilo.sezione || "").trim(),
+      colore: String(nuovoMovimentoFilo.colore || "").trim(),
+      metri,
+      note: String(nuovoMovimentoFilo.note || "").trim()
     }
 
-    setMatasse((precedenti) => [...precedenti, matassa])
-    setNuovaMatassa(creaMatassaVuota())
-    setMessaggio("Matassa aggiunta")
+    setMovimentiFilo((precedenti) => [...precedenti, movimento])
+
+    setNuovoMovimentoFilo((precedente) => ({
+      ...creaMovimentoFiloVuoto(),
+      movimento: precedente.movimento,
+      sezione: precedente.sezione,
+      colore: precedente.colore
+    }))
+
+    setMessaggio(
+      `${movimento.movimento === "portato" ? "Portati" : "Tolti"} ${formatoNumero(
+        metri
+      )} m di filo`
+    )
   }
 
-  function aggiornaMatassa(id, campo, valore) {
-    setMatasse((precedenti) =>
-      precedenti.map((matassa) =>
-        String(matassa.id) === String(id)
+  function aggiornaMovimentoFilo(id, campo, valore) {
+    setMovimentiFilo((precedenti) =>
+      precedenti.map((movimento) =>
+        String(movimento.id) === String(id)
           ? {
-              ...matassa,
+              ...movimento,
               [campo]:
-                campo === "metriIniziali" || campo === "metriRimasti"
+                campo === "metri"
                   ? Math.max(0, Number(valore || 0))
                   : valore
             }
-          : matassa
+          : movimento
       )
     )
   }
 
-  function eliminaMatassa(id) {
-    setMatasse((precedenti) =>
-      precedenti.filter((matassa) => String(matassa.id) !== String(id))
+  function eliminaMovimentoFilo(id) {
+    setMovimentiFilo((precedenti) =>
+      precedenti.filter(
+        (movimento) => String(movimento.id) !== String(id)
+      )
     )
   }
+
+  const totaliFilo = useMemo(() => {
+    return movimentiFilo.reduce(
+      (totale, movimento) => {
+        const metri = Number(movimento.metri || 0)
+
+        if (movimento.movimento === "tolto") {
+          totale.tolti += metri
+        } else {
+          totale.portati += metri
+        }
+
+        totale.netti = totale.portati - totale.tolti
+        return totale
+      },
+      { portati: 0, tolti: 0, netti: 0 }
+    )
+  }, [movimentiFilo])
 
   const riepilogoFili = useMemo(() => {
     const sezioni = new Map()
@@ -768,30 +957,34 @@ export default function PuntiLucePage() {
       if (!sezioni.has(chiave)) {
         sezioni.set(chiave, {
           sezione: chiave,
-          metriCalcolati: 0,
-          metriIniziali: 0,
-          metriRimasti: 0,
-          metriConsumati: 0
+          metriPortati: 0,
+          metriTolti: 0,
+          metriNetti: 0,
+          metriLinee: 0,
+          metriConduttore: 0
         })
       }
 
       return sezioni.get(chiave)
     }
 
-    stanze.forEach((stanza) => {
-      ;(stanza.linee || []).forEach((linea) => {
-        assicuraSezione(linea.sezione).metriCalcolati += metriConduttoreLinea(linea)
-      })
+    movimentiFilo.forEach((movimento) => {
+      const riga = assicuraSezione(movimento.sezione)
+      const metri = Number(movimento.metri || 0)
+
+      if (movimento.movimento === "tolto") {
+        riga.metriTolti += metri
+      } else {
+        riga.metriPortati += metri
+      }
+
+      riga.metriNetti = riga.metriPortati - riga.metriTolti
     })
 
-    matasse.forEach((matassa) => {
-      const riga = assicuraSezione(matassa.sezione)
-      const iniziali = Number(matassa.metriIniziali || 0)
-      const rimasti = Math.min(iniziali, Number(matassa.metriRimasti || 0))
-
-      riga.metriIniziali += iniziali
-      riga.metriRimasti += rimasti
-      riga.metriConsumati += Math.max(0, iniziali - rimasti)
+    lineeGenerali.forEach((linea) => {
+      const riga = assicuraSezione(linea.sezione)
+      riga.metriLinee += Number(linea.lunghezza || 0)
+      riga.metriConduttore += metriConduttoreLinea(linea)
     })
 
     return [...sezioni.values()].sort((a, b) =>
@@ -799,43 +992,33 @@ export default function PuntiLucePage() {
         numeric: true
       })
     )
-  }, [stanze, matasse])
+  }, [movimentiFilo, lineeGenerali])
+
+  const riepilogoLinee = useMemo(() => {
+    return lineeGenerali.reduce(
+      (totale, linea) => {
+        totale.metriLinee += Number(linea.lunghezza || 0)
+        totale.metriConduttore += metriConduttoreLinea(linea)
+        return totale
+      },
+      { metriLinee: 0, metriConduttore: 0 }
+    )
+  }, [lineeGenerali])
 
   const riepilogoGenerale = useMemo(() => {
-    return stanze.reduce(
+    const riepilogoStanze = stanze.reduce(
       (totale, stanza) => {
-        totale.moduliTotali += calcolaModuliDaScatole(
-          stanza.scatole
-        )
+        totale.moduliTotali += calcolaModuliDaScatole(stanza.scatole)
+        totale.moduliUsati += calcolaModuliUsati(stanza.punti)
 
-        totale.moduliUsati += calcolaModuliUsati(
-          stanza.punti
-        )
-
-        totale.numeroPunti += (
-          stanza.punti || []
-        ).reduce(
-          (somma, punto) =>
-            somma + Number(punto.quantita || 0),
+        totale.numeroPunti += (stanza.punti || []).reduce(
+          (somma, punto) => somma + Number(punto.quantita || 0),
           0
         )
 
         totale.numeroScatole += scatoleDisponibili.reduce(
           (somma, scatola) =>
-            somma +
-            Number(
-              stanza.scatole?.[scatola.codice] || 0
-            ),
-          0
-        )
-
-        totale.metriLinee += (stanza.linee || []).reduce(
-          (somma, linea) => somma + Number(linea.lunghezza || 0),
-          0
-        )
-
-        totale.metriConduttore += (stanza.linee || []).reduce(
-          (somma, linea) => somma + metriConduttoreLinea(linea),
+            somma + Number(stanza.scatole?.[scatola.codice] || 0),
           0
         )
 
@@ -845,12 +1028,19 @@ export default function PuntiLucePage() {
         moduliTotali: 0,
         moduliUsati: 0,
         numeroPunti: 0,
-        numeroScatole: 0,
-        metriLinee: 0,
-        metriConduttore: 0
+        numeroScatole: 0
       }
     )
-  }, [stanze, vociDB])
+
+    return {
+      ...riepilogoStanze,
+      metriPortati: totaliFilo.portati,
+      metriTolti: totaliFilo.tolti,
+      metriNetti: totaliFilo.netti,
+      metriLinee: riepilogoLinee.metriLinee,
+      metriConduttore: riepilogoLinee.metriConduttore
+    }
+  }, [stanze, vociDB, totaliFilo, riepilogoLinee])
 
   const distintaMateriali = useMemo(() => {
     const mappa = new Map()
@@ -916,38 +1106,30 @@ export default function PuntiLucePage() {
       return
     }
 
-    if (stanze.length === 0) {
-      alert("Non ci sono stanze da esportare")
+    if (
+      stanze.length === 0 &&
+      movimentiFilo.length === 0 &&
+      lineeGenerali.length === 0
+    ) {
+      alert("Non ci sono dati da esportare")
       return
     }
 
     const righe = []
 
     righe.push(["PROGETTO PUNTI LUCE"])
-    righe.push([
-      "Cliente",
-      clienteSelezionato?.nome || ""
-    ])
+    righe.push(["Cliente", clienteSelezionato?.nome || ""])
     righe.push(["Serie civile", serie])
-    righe.push([
-      "Data esportazione",
-      new Date().toLocaleDateString()
-    ])
+    righe.push(["Data esportazione", new Date().toLocaleDateString()])
     righe.push([])
 
     stanze.forEach((stanza, indice) => {
       righe.push([`STANZA ${indice + 1}`, stanza.nome])
       righe.push(["SCATOLE"])
-      righe.push([
-        "Tipo",
-        "Quantità",
-        "Moduli totali"
-      ])
+      righe.push(["Tipo", "Quantità", "Moduli totali"])
 
       scatoleDisponibili.forEach((scatola) => {
-        const quantita = Number(
-          stanza.scatole?.[scatola.codice] || 0
-        )
+        const quantita = Number(stanza.scatole?.[scatola.codice] || 0)
 
         if (quantita > 0) {
           righe.push([
@@ -979,108 +1161,109 @@ export default function PuntiLucePage() {
       })
 
       righe.push([])
-      righe.push(["LINEE E FILI"])
-      righe.push([
-        "Descrizione linea",
-        "Lunghezza linea (m)",
-        "Sezione (mm²)",
-        "Numero fili",
-        "Metri conduttore"
-      ])
-
-      ;(stanza.linee || []).forEach((linea) => {
-        righe.push([
-          linea.descrizione || "",
-          Number(linea.lunghezza || 0),
-          linea.sezione || "",
-          Number(linea.numeroFili || 0),
-          metriConduttoreLinea(linea)
-        ])
-      })
-
-      righe.push([])
       righe.push([])
     })
 
-    righe.push(["MATASSE FILO"])
+    righe.push(["FILO PORTATO E TOLTO"])
     righe.push([
+      "Movimento",
       "Sezione",
       "Colore",
-      "Metri iniziali",
-      "Metri rimasti",
-      "Metri consumati"
+      "Metri",
+      "Note"
     ])
 
-    matasse.forEach((matassa) => {
+    movimentiFilo.forEach((movimento) => {
       righe.push([
-        matassa.sezione || "",
-        matassa.colore || "",
-        Number(matassa.metriIniziali || 0),
-        Number(matassa.metriRimasti || 0),
-        Math.max(
-          0,
-          Number(matassa.metriIniziali || 0) -
-            Number(matassa.metriRimasti || 0)
-        )
+        movimento.movimento === "tolto" ? "Tolto" : "Portato",
+        movimento.sezione || "",
+        movimento.colore || "",
+        Number(movimento.metri || 0),
+        movimento.note || ""
       ])
     })
 
     righe.push([])
-    righe.push(["CONFRONTO FILI PER SEZIONE"])
+    righe.push(["Totale metri portati", totaliFilo.portati])
+    righe.push(["Totale metri tolti", totaliFilo.tolti])
+    righe.push(["Metri netti", totaliFilo.netti])
+    righe.push([])
+
+    righe.push(["LINEE POSATE"])
+    righe.push([
+      "Descrizione linea",
+      "Metri linea",
+      "Sezione",
+      "Numero fili",
+      "Metri conduttore",
+      "Note"
+    ])
+
+    lineeGenerali.forEach((linea) => {
+      righe.push([
+        linea.descrizione || "",
+        Number(linea.lunghezza || 0),
+        linea.sezione || "",
+        Number(linea.numeroFili || 0),
+        metriConduttoreLinea(linea),
+        linea.note || ""
+      ])
+    })
+
+    righe.push([])
+    righe.push(["Totale metri linee", riepilogoLinee.metriLinee])
+    righe.push([
+      "Totale metri conduttore",
+      riepilogoLinee.metriConduttore
+    ])
+    righe.push([])
+
+    righe.push(["RIEPILOGO FILI PER SEZIONE"])
     righe.push([
       "Sezione",
-      "Calcolati dalle linee",
-      "Consumati dalle matasse",
-      "Differenza / sfrido"
+      "Portati",
+      "Tolti",
+      "Netti",
+      "Metri linee",
+      "Metri conduttore"
     ])
 
     riepilogoFili.forEach((riga) => {
       righe.push([
         riga.sezione,
-        riga.metriCalcolati,
-        riga.metriConsumati,
-        riga.metriConsumati - riga.metriCalcolati
+        riga.metriPortati,
+        riga.metriTolti,
+        riga.metriNetti,
+        riga.metriLinee,
+        riga.metriConduttore
       ])
     })
 
     righe.push([])
     righe.push(["DISTINTA MATERIALI"])
-    righe.push([
-      "Gruppo",
-      "Descrizione",
-      "Quantità"
-    ])
+    righe.push(["Gruppo", "Descrizione", "Quantità"])
 
     distintaMateriali.forEach((voce) => {
-      righe.push([
-        voce.gruppo,
-        voce.descrizione,
-        voce.quantita
-      ])
+      righe.push([voce.gruppo, voce.descrizione, voce.quantita])
     })
 
     const foglio = XLSX.utils.aoa_to_sheet(righe)
 
     foglio["!cols"] = [
-      { wch: 24 },
+      { wch: 26 },
       { wch: 42 },
-      { wch: 15 },
       { wch: 18 },
-      { wch: 15 }
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 30 }
     ]
 
     const file = XLSX.utils.book_new()
 
-    XLSX.utils.book_append_sheet(
-      file,
-      foglio,
-      "Punti luce"
-    )
+    XLSX.utils.book_append_sheet(file, foglio, "Punti luce")
 
-    const nomeCliente = String(
-      clienteSelezionato?.nome || "cliente"
-    )
-      .replace(/[\\/:*?"<>|]/g, "_")
+    const nomeCliente = String(clienteSelezionato?.nome || "cliente")
+      .replace(/[\/:*?"<>|]/g, "_")
       .trim()
 
     XLSX.writeFile(
@@ -1089,7 +1272,7 @@ export default function PuntiLucePage() {
     )
   }
 
-  function cancellaProgetto() {
+  async function cancellaProgetto() {
     if (!clienteId || !serie) return
 
     const conferma = window.prompt(
@@ -1098,17 +1281,30 @@ export default function PuntiLucePage() {
 
     if (conferma !== "CANCELLA") return
 
+    const { error } = await supabase
+      .from("punti_luce_progetti")
+      .delete()
+      .eq("cliente_id", clienteId)
+      .eq("serie", serie)
+
+    if (error) {
+      console.error("Errore cancellazione progetto online:", error)
+      alert("Errore cancellazione progetto online: " + error.message)
+      return
+    }
+
     localStorage.removeItem(
       getStorageKey(clienteId, serie)
     )
 
     setStanze([])
-    setMatasse([])
+    setLineeGenerali([])
+    setMovimentiFilo([])
     setStanzaIdCorrente("")
     setUltimoSalvataggio("")
     resetInserimentoMateriali()
 
-    alert("Progetto cancellato")
+    alert("Progetto cancellato online")
   }
 
   const vociCapitoloAperto = vociDB.filter(
@@ -1206,9 +1402,11 @@ export default function PuntiLucePage() {
 
           <span style={styles.testoSecondario}>
             {clienteId && serie
-              ? ultimoSalvataggio
-                ? `✅ Salvato automaticamente alle ${ultimoSalvataggio}`
-                : "Salvataggio automatico attivo"
+              ? ultimoSalvataggio === "ERRORE"
+                ? "⚠️ Copia locale salvata - errore salvataggio online"
+                : ultimoSalvataggio
+                  ? `☁️ Salvato online alle ${ultimoSalvataggio}`
+                  : "☁️ Salvataggio online automatico attivo"
               : "Seleziona cliente e serie"}
           </span>
         </div>
@@ -1615,188 +1813,6 @@ export default function PuntiLucePage() {
             )}
           </div>
 
-          <div style={styles.box}>
-            <div style={styles.testataSezione}>
-              <div>
-                <h2 style={{ margin: 0 }}>🧵 Linee e fili della stanza</h2>
-                <div style={styles.testoSecondario}>
-                  Inserisci la lunghezza reale della linea, la sezione e il numero di fili.
-                </div>
-              </div>
-
-              <div style={styles.riepilogoPiccolo}>
-                Linee: <b>{(stanzaCorrente.linee || []).length}</b>
-                {" · "}
-                Metri linea: <b>{formatoNumero((stanzaCorrente.linee || []).reduce(
-                  (somma, linea) => somma + Number(linea.lunghezza || 0),
-                  0
-                ))}</b>
-                {" · "}
-                Metri filo: <b>{formatoNumero((stanzaCorrente.linee || []).reduce(
-                  (somma, linea) => somma + metriConduttoreLinea(linea),
-                  0
-                ))}</b>
-              </div>
-            </div>
-
-            <div style={styles.grigliaLinea}>
-              <div style={styles.campoLineaLargo}>
-                <label style={styles.label}>Descrizione linea</label>
-                <input
-                  value={nuovaLinea.descrizione}
-                  onChange={(evento) =>
-                    setNuovaLinea((precedente) => ({
-                      ...precedente,
-                      descrizione: evento.target.value
-                    }))
-                  }
-                  placeholder="Esempio: Linea prese cucina"
-                  style={styles.input}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Metri linea</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={nuovaLinea.lunghezza}
-                  onChange={(evento) =>
-                    setNuovaLinea((precedente) => ({
-                      ...precedente,
-                      lunghezza: evento.target.value
-                    }))
-                  }
-                  style={styles.input}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Sezione mm²</label>
-                <select
-                  value={nuovaLinea.sezione}
-                  onChange={(evento) =>
-                    setNuovaLinea((precedente) => ({
-                      ...precedente,
-                      sezione: evento.target.value
-                    }))
-                  }
-                  style={styles.input}
-                >
-                  {["0.5", "0.75", "1", "1.5", "2.5", "4", "6", "10", "16"].map(
-                    (sezione) => (
-                      <option key={sezione} value={sezione}>
-                        {sezione.replace(".", ",")}
-                      </option>
-                    )
-                  )}
-                </select>
-              </div>
-
-              <div>
-                <label style={styles.label}>Numero fili</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={nuovaLinea.numeroFili}
-                  onChange={(evento) =>
-                    setNuovaLinea((precedente) => ({
-                      ...precedente,
-                      numeroFili: evento.target.value
-                    }))
-                  }
-                  style={styles.input}
-                />
-              </div>
-
-              <div style={styles.campoLineaLargo}>
-                <label style={styles.label}>Composizione / colori</label>
-                <input
-                  value={nuovaLinea.composizione}
-                  onChange={(evento) =>
-                    setNuovaLinea((precedente) => ({
-                      ...precedente,
-                      composizione: evento.target.value
-                    }))
-                  }
-                  placeholder="Esempio: marrone, blu, giallo-verde"
-                  style={styles.input}
-                />
-              </div>
-
-              <div style={styles.campoLineaLargo}>
-                <label style={styles.label}>Note</label>
-                <input
-                  value={nuovaLinea.note}
-                  onChange={(evento) =>
-                    setNuovaLinea((precedente) => ({
-                      ...precedente,
-                      note: evento.target.value
-                    }))
-                  }
-                  placeholder="Facoltative"
-                  style={styles.input}
-                />
-              </div>
-
-              <div style={styles.anteprimaLinea}>
-                Totale: <b>{formatoNumero(
-                  Number(nuovaLinea.lunghezza || 0) *
-                    Number(nuovaLinea.numeroFili || 0)
-                )} m</b> di filo
-              </div>
-
-              <button onClick={aggiungiLinea} style={styles.btnImporta}>
-                Aggiungi linea
-              </button>
-            </div>
-
-            {(stanzaCorrente.linee || []).length === 0 ? (
-              <div style={styles.vuoto}>Nessuna linea inserita in questa stanza.</div>
-            ) : (
-              <div style={{ ...styles.tabellaContenitore, marginTop: 12 }}>
-                <table style={styles.tabellaLinee}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>Descrizione</th>
-                      <th style={styles.th}>Metri linea</th>
-                      <th style={styles.th}>Sezione</th>
-                      <th style={styles.th}>Fili</th>
-                      <th style={styles.th}>Metri filo</th>
-                      <th style={styles.th}>Composizione</th>
-                      <th style={styles.th}>Azioni</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(stanzaCorrente.linee || []).map((linea) => (
-                      <tr key={linea.id}>
-                        <td style={styles.td}>
-                          <b>{linea.descrizione}</b>
-                          {linea.note && (
-                            <div style={styles.testoSecondario}>{linea.note}</div>
-                          )}
-                        </td>
-                        <td style={styles.td}>{formatoNumero(linea.lunghezza)} m</td>
-                        <td style={styles.td}>{String(linea.sezione).replace(".", ",")} mm²</td>
-                        <td style={styles.td}>{linea.numeroFili}</td>
-                        <td style={styles.td}><b>{formatoNumero(metriConduttoreLinea(linea))} m</b></td>
-                        <td style={styles.td}>{linea.composizione || "-"}</td>
-                        <td style={styles.td}>
-                          <button
-                            onClick={() => eliminaLinea(linea.id)}
-                            style={styles.btnRossoPiccolo}
-                          >
-                            Elimina
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
 
           <div style={styles.box}>
             <div style={styles.testataSezione}>
@@ -1959,23 +1975,50 @@ export default function PuntiLucePage() {
         </>
       )}
 
+
       <div style={styles.box}>
         <div style={styles.testataSezione}>
           <div>
-            <h2 style={{ margin: 0 }}>🧶 Matasse portate in cantiere</h2>
+            <h2 style={{ margin: 0 }}>🧶 Filo portato e tolto</h2>
             <div style={styles.testoSecondario}>
-              Inserisci i metri iniziali. Alla fine aggiorna i metri rimasti: il consumo viene calcolato automaticamente.
+              Inserisci ogni volta i metri portati in cantiere oppure i metri
+              riportati via.
             </div>
+          </div>
+
+          <div style={styles.riepilogoPiccolo}>
+            Portati: <b>{formatoNumero(totaliFilo.portati)} m</b>
+            {" · "}
+            Tolti: <b>{formatoNumero(totaliFilo.tolti)} m</b>
+            {" · "}
+            Netti: <b>{formatoNumero(totaliFilo.netti)} m</b>
           </div>
         </div>
 
-        <div style={styles.grigliaMatassa}>
+        <div style={styles.grigliaMovimentoFilo}>
+          <div>
+            <label style={styles.label}>Movimento</label>
+            <select
+              value={nuovoMovimentoFilo.movimento}
+              onChange={(evento) =>
+                setNuovoMovimentoFilo((precedente) => ({
+                  ...precedente,
+                  movimento: evento.target.value
+                }))
+              }
+              style={styles.input}
+            >
+              <option value="portato">Portato in cantiere</option>
+              <option value="tolto">Tolto / riportato via</option>
+            </select>
+          </div>
+
           <div>
             <label style={styles.label}>Sezione mm²</label>
             <select
-              value={nuovaMatassa.sezione}
+              value={nuovoMovimentoFilo.sezione}
               onChange={(evento) =>
-                setNuovaMatassa((precedente) => ({
+                setNuovoMovimentoFilo((precedente) => ({
                   ...precedente,
                   sezione: evento.target.value
                 }))
@@ -1995,48 +2038,29 @@ export default function PuntiLucePage() {
           <div>
             <label style={styles.label}>Colore</label>
             <input
-              value={nuovaMatassa.colore}
+              value={nuovoMovimentoFilo.colore}
               onChange={(evento) =>
-                setNuovaMatassa((precedente) => ({
+                setNuovoMovimentoFilo((precedente) => ({
                   ...precedente,
                   colore: evento.target.value
                 }))
               }
-              placeholder="Blu, marrone, terra..."
+              placeholder="Blu, nero, terra..."
               style={styles.input}
             />
           </div>
 
           <div>
-            <label style={styles.label}>Metri iniziali</label>
+            <label style={styles.label}>Metri</label>
             <input
               type="number"
               min="0"
-              value={nuovaMatassa.metriIniziali}
+              step="0.5"
+              value={nuovoMovimentoFilo.metri}
               onChange={(evento) =>
-                setNuovaMatassa((precedente) => ({
+                setNuovoMovimentoFilo((precedente) => ({
                   ...precedente,
-                  metriIniziali: evento.target.value,
-                  metriRimasti:
-                    Number(precedente.metriRimasti) === Number(precedente.metriIniziali)
-                      ? evento.target.value
-                      : precedente.metriRimasti
-                }))
-              }
-              style={styles.input}
-            />
-          </div>
-
-          <div>
-            <label style={styles.label}>Metri rimasti</label>
-            <input
-              type="number"
-              min="0"
-              value={nuovaMatassa.metriRimasti}
-              onChange={(evento) =>
-                setNuovaMatassa((precedente) => ({
-                  ...precedente,
-                  metriRimasti: evento.target.value
+                  metri: evento.target.value
                 }))
               }
               style={styles.input}
@@ -2046,9 +2070,9 @@ export default function PuntiLucePage() {
           <div>
             <label style={styles.label}>Note</label>
             <input
-              value={nuovaMatassa.note}
+              value={nuovoMovimentoFilo.note}
               onChange={(evento) =>
-                setNuovaMatassa((precedente) => ({
+                setNuovoMovimentoFilo((precedente) => ({
                   ...precedente,
                   note: evento.target.value
                 }))
@@ -2058,72 +2082,365 @@ export default function PuntiLucePage() {
             />
           </div>
 
-          <button onClick={aggiungiMatassa} style={styles.btnImporta}>
-            Aggiungi matassa
+          <button
+            onClick={aggiungiMovimentoFilo}
+            style={styles.btnImporta}
+          >
+            Aggiungi movimento
           </button>
         </div>
 
-        {matasse.length === 0 ? (
-          <div style={styles.vuoto}>Nessuna matassa inserita.</div>
+        {movimentiFilo.length === 0 ? (
+          <div style={styles.vuoto}>Nessun movimento di filo inserito.</div>
         ) : (
           <div style={{ ...styles.tabellaContenitore, marginTop: 12 }}>
             <table style={styles.tabellaLinee}>
               <thead>
                 <tr>
+                  <th style={styles.th}>Movimento</th>
                   <th style={styles.th}>Sezione</th>
                   <th style={styles.th}>Colore</th>
-                  <th style={styles.th}>Iniziali</th>
-                  <th style={styles.th}>Rimasti</th>
-                  <th style={styles.th}>Consumati</th>
+                  <th style={styles.th}>Metri</th>
                   <th style={styles.th}>Note</th>
                   <th style={styles.th}>Azioni</th>
                 </tr>
               </thead>
+
               <tbody>
-                {matasse.map((matassa) => (
-                  <tr key={matassa.id}>
-                    <td style={styles.td}>{String(matassa.sezione).replace(".", ",")} mm²</td>
+                {movimentiFilo.map((movimento) => (
+                  <tr key={movimento.id}>
+                    <td style={styles.td}>
+                      <select
+                        value={movimento.movimento}
+                        onChange={(evento) =>
+                          aggiornaMovimentoFilo(
+                            movimento.id,
+                            "movimento",
+                            evento.target.value
+                          )
+                        }
+                        style={styles.inputTabella}
+                      >
+                        <option value="portato">Portato</option>
+                        <option value="tolto">Tolto</option>
+                      </select>
+                    </td>
+
+                    <td style={styles.td}>
+                      <select
+                        value={movimento.sezione}
+                        onChange={(evento) =>
+                          aggiornaMovimentoFilo(
+                            movimento.id,
+                            "sezione",
+                            evento.target.value
+                          )
+                        }
+                        style={styles.inputTabella}
+                      >
+                        {["0.5", "0.75", "1", "1.5", "2.5", "4", "6", "10", "16"].map(
+                          (sezione) => (
+                            <option key={sezione} value={sezione}>
+                              {sezione.replace(".", ",")} mm²
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </td>
+
                     <td style={styles.td}>
                       <input
-                        value={matassa.colore}
+                        value={movimento.colore}
                         onChange={(evento) =>
-                          aggiornaMatassa(matassa.id, "colore", evento.target.value)
+                          aggiornaMovimentoFilo(
+                            movimento.id,
+                            "colore",
+                            evento.target.value
+                          )
                         }
                         style={styles.inputTabella}
                       />
                     </td>
+
                     <td style={styles.td}>
                       <input
                         type="number"
                         min="0"
-                        value={matassa.metriIniziali}
+                        step="0.5"
+                        value={movimento.metri}
                         onChange={(evento) =>
-                          aggiornaMatassa(matassa.id, "metriIniziali", evento.target.value)
+                          aggiornaMovimentoFilo(
+                            movimento.id,
+                            "metri",
+                            evento.target.value
+                          )
                         }
                         style={styles.inputNumeroTabella}
                       />
                     </td>
+
                     <td style={styles.td}>
                       <input
-                        type="number"
-                        min="0"
-                        value={matassa.metriRimasti}
+                        value={movimento.note || ""}
                         onChange={(evento) =>
-                          aggiornaMatassa(matassa.id, "metriRimasti", evento.target.value)
+                          aggiornaMovimentoFilo(
+                            movimento.id,
+                            "note",
+                            evento.target.value
+                          )
                         }
-                        style={styles.inputNumeroTabella}
+                        style={styles.inputTabella}
                       />
                     </td>
-                    <td style={styles.td}>
-                      <b>{formatoNumero(Math.max(
-                        0,
-                        Number(matassa.metriIniziali || 0) - Number(matassa.metriRimasti || 0)
-                      ))} m</b>
-                    </td>
-                    <td style={styles.td}>{matassa.note || "-"}</td>
+
                     <td style={styles.td}>
                       <button
-                        onClick={() => eliminaMatassa(matassa.id)}
+                        onClick={() => eliminaMovimentoFilo(movimento.id)}
+                        style={styles.btnRossoPiccolo}
+                      >
+                        Elimina
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div style={styles.box}>
+        <div style={styles.testataSezione}>
+          <div>
+            <h2 style={{ margin: 0 }}>📏 Linee posate</h2>
+            <div style={styles.testoSecondario}>
+              Inserisci i metri reali della linea e una descrizione. La sezione
+              e il numero di fili servono per calcolare anche i metri totali di
+              conduttore.
+            </div>
+          </div>
+
+          <div style={styles.riepilogoPiccolo}>
+            Metri linee: <b>{formatoNumero(riepilogoLinee.metriLinee)} m</b>
+            {" · "}
+            Metri filo:{" "}
+            <b>{formatoNumero(riepilogoLinee.metriConduttore)} m</b>
+          </div>
+        </div>
+
+        <div style={styles.grigliaLineaGenerale}>
+          <div style={styles.campoLineaLargo}>
+            <label style={styles.label}>Descrizione linea</label>
+            <input
+              value={nuovaLinea.descrizione}
+              onChange={(evento) =>
+                setNuovaLinea((precedente) => ({
+                  ...precedente,
+                  descrizione: evento.target.value
+                }))
+              }
+              placeholder="Esempio: Linea prese cucina"
+              style={styles.input}
+            />
+          </div>
+
+          <div>
+            <label style={styles.label}>Metri linea</label>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={nuovaLinea.lunghezza}
+              onChange={(evento) =>
+                setNuovaLinea((precedente) => ({
+                  ...precedente,
+                  lunghezza: evento.target.value
+                }))
+              }
+              style={styles.input}
+            />
+          </div>
+
+          <div>
+            <label style={styles.label}>Sezione mm²</label>
+            <select
+              value={nuovaLinea.sezione}
+              onChange={(evento) =>
+                setNuovaLinea((precedente) => ({
+                  ...precedente,
+                  sezione: evento.target.value
+                }))
+              }
+              style={styles.input}
+            >
+              {["0.5", "0.75", "1", "1.5", "2.5", "4", "6", "10", "16"].map(
+                (sezione) => (
+                  <option key={sezione} value={sezione}>
+                    {sezione.replace(".", ",")}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+
+          <div>
+            <label style={styles.label}>Numero fili</label>
+            <input
+              type="number"
+              min="1"
+              value={nuovaLinea.numeroFili}
+              onChange={(evento) =>
+                setNuovaLinea((precedente) => ({
+                  ...precedente,
+                  numeroFili: evento.target.value
+                }))
+              }
+              style={styles.input}
+            />
+          </div>
+
+          <div style={styles.campoLineaLargo}>
+            <label style={styles.label}>Note</label>
+            <input
+              value={nuovaLinea.note}
+              onChange={(evento) =>
+                setNuovaLinea((precedente) => ({
+                  ...precedente,
+                  note: evento.target.value
+                }))
+              }
+              placeholder="Facoltative"
+              style={styles.input}
+            />
+          </div>
+
+          <div style={styles.anteprimaLinea}>
+            {formatoNumero(nuovaLinea.lunghezza)} m linea
+            {" · "}
+            <b>
+              {formatoNumero(
+                Number(nuovaLinea.lunghezza || 0) *
+                  Number(nuovaLinea.numeroFili || 0)
+              )}{" "}
+              m filo
+            </b>
+          </div>
+
+          <button onClick={aggiungiLinea} style={styles.btnImporta}>
+            Aggiungi linea
+          </button>
+        </div>
+
+        {lineeGenerali.length === 0 ? (
+          <div style={styles.vuoto}>Nessuna linea inserita.</div>
+        ) : (
+          <div style={{ ...styles.tabellaContenitore, marginTop: 12 }}>
+            <table style={styles.tabellaLinee}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Descrizione</th>
+                  <th style={styles.th}>Metri linea</th>
+                  <th style={styles.th}>Sezione</th>
+                  <th style={styles.th}>Numero fili</th>
+                  <th style={styles.th}>Metri filo</th>
+                  <th style={styles.th}>Note</th>
+                  <th style={styles.th}>Azioni</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {lineeGenerali.map((linea) => (
+                  <tr key={linea.id}>
+                    <td style={styles.td}>
+                      <input
+                        value={linea.descrizione}
+                        onChange={(evento) =>
+                          aggiornaLinea(
+                            linea.id,
+                            "descrizione",
+                            evento.target.value
+                          )
+                        }
+                        style={styles.inputTabella}
+                      />
+                    </td>
+
+                    <td style={styles.td}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={linea.lunghezza}
+                        onChange={(evento) =>
+                          aggiornaLinea(
+                            linea.id,
+                            "lunghezza",
+                            evento.target.value
+                          )
+                        }
+                        style={styles.inputNumeroTabella}
+                      />
+                    </td>
+
+                    <td style={styles.td}>
+                      <select
+                        value={linea.sezione}
+                        onChange={(evento) =>
+                          aggiornaLinea(
+                            linea.id,
+                            "sezione",
+                            evento.target.value
+                          )
+                        }
+                        style={styles.inputTabella}
+                      >
+                        {["0.5", "0.75", "1", "1.5", "2.5", "4", "6", "10", "16"].map(
+                          (sezione) => (
+                            <option key={sezione} value={sezione}>
+                              {sezione.replace(".", ",")} mm²
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </td>
+
+                    <td style={styles.td}>
+                      <input
+                        type="number"
+                        min="1"
+                        value={linea.numeroFili}
+                        onChange={(evento) =>
+                          aggiornaLinea(
+                            linea.id,
+                            "numeroFili",
+                            evento.target.value
+                          )
+                        }
+                        style={styles.inputNumeroTabella}
+                      />
+                    </td>
+
+                    <td style={styles.td}>
+                      <b>{formatoNumero(metriConduttoreLinea(linea))} m</b>
+                    </td>
+
+                    <td style={styles.td}>
+                      <input
+                        value={linea.note || ""}
+                        onChange={(evento) =>
+                          aggiornaLinea(
+                            linea.id,
+                            "note",
+                            evento.target.value
+                          )
+                        }
+                        style={styles.inputTabella}
+                      />
+                    </td>
+
+                    <td style={styles.td}>
+                      <button
+                        onClick={() => eliminaLinea(linea.id)}
                         style={styles.btnRossoPiccolo}
                       >
                         Elimina
@@ -2138,39 +2455,46 @@ export default function PuntiLucePage() {
 
         {riepilogoFili.length > 0 && (
           <div style={{ marginTop: 18 }}>
-            <h3>📏 Confronto per sezione</h3>
+            <h3>📊 Riepilogo per sezione</h3>
+
             <div style={styles.tabellaContenitore}>
               <table style={styles.tabellaLinee}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Sezione</th>
-                    <th style={styles.th}>Calcolati dalle linee</th>
-                    <th style={styles.th}>Consumati dalle matasse</th>
-                    <th style={styles.th}>Differenza / sfrido</th>
-                    <th style={styles.th}>Rimasti in cantiere</th>
+                    <th style={styles.th}>Portati</th>
+                    <th style={styles.th}>Tolti</th>
+                    <th style={styles.th}>Netti</th>
+                    <th style={styles.th}>Metri linee</th>
+                    <th style={styles.th}>Metri filo calcolati</th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {riepilogoFili.map((riga) => {
-                    const differenza = riga.metriConsumati - riga.metriCalcolati
-                    return (
-                      <tr key={riga.sezione}>
-                        <td style={styles.td}><b>{String(riga.sezione).replace(".", ",")} mm²</b></td>
-                        <td style={styles.td}>{formatoNumero(riga.metriCalcolati)} m</td>
-                        <td style={styles.td}>{formatoNumero(riga.metriConsumati)} m</td>
-                        <td
-                          style={{
-                            ...styles.td,
-                            color: differenza < 0 ? "#b42318" : "#067647",
-                            fontWeight: "bold"
-                          }}
-                        >
-                          {formatoNumero(differenza)} m
-                        </td>
-                        <td style={styles.td}>{formatoNumero(riga.metriRimasti)} m</td>
-                      </tr>
-                    )
-                  })}
+                  {riepilogoFili.map((riga) => (
+                    <tr key={riga.sezione}>
+                      <td style={styles.td}>
+                        <b>
+                          {String(riga.sezione).replace(".", ",")} mm²
+                        </b>
+                      </td>
+                      <td style={styles.td}>
+                        {formatoNumero(riga.metriPortati)} m
+                      </td>
+                      <td style={styles.td}>
+                        {formatoNumero(riga.metriTolti)} m
+                      </td>
+                      <td style={styles.td}>
+                        <b>{formatoNumero(riga.metriNetti)} m</b>
+                      </td>
+                      <td style={styles.td}>
+                        {formatoNumero(riga.metriLinee)} m
+                      </td>
+                      <td style={styles.td}>
+                        {formatoNumero(riga.metriConduttore)} m
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -2223,13 +2547,29 @@ export default function PuntiLucePage() {
           />
 
           <MiniBox
+            titolo="Filo portato"
+            valore={`${formatoNumero(riepilogoGenerale.metriPortati)} m`}
+          />
+
+          <MiniBox
+            titolo="Filo tolto"
+            valore={`${formatoNumero(riepilogoGenerale.metriTolti)} m`}
+          />
+
+          <MiniBox
+            titolo="Filo netto"
+            valore={`${formatoNumero(riepilogoGenerale.metriNetti)} m`}
+            danger={riepilogoGenerale.metriNetti < 0}
+          />
+
+          <MiniBox
             titolo="Metri linee"
-            valore={formatoNumero(riepilogoGenerale.metriLinee)}
+            valore={`${formatoNumero(riepilogoGenerale.metriLinee)} m`}
           />
 
           <MiniBox
             titolo="Metri filo"
-            valore={formatoNumero(riepilogoGenerale.metriConduttore)}
+            valore={`${formatoNumero(riepilogoGenerale.metriConduttore)} m`}
           />
         </div>
       </div>
@@ -2694,6 +3034,24 @@ const styles = {
     color: "white",
     cursor: "pointer",
     fontWeight: "bold"
+  },
+
+  grigliaMovimentoFilo: {
+    display: "grid",
+    gridTemplateColumns:
+      "170px 130px minmax(150px, 1fr) 120px minmax(180px, 1fr) auto",
+    gap: 8,
+    alignItems: "end",
+    marginTop: 12
+  },
+
+  grigliaLineaGenerale: {
+    display: "grid",
+    gridTemplateColumns:
+      "minmax(230px, 1.5fr) 120px 130px 110px minmax(180px, 1fr) auto auto",
+    gap: 8,
+    alignItems: "end",
+    marginTop: 12
   },
 
   grigliaLinea: {

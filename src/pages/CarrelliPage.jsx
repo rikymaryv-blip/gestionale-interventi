@@ -38,6 +38,9 @@ export default function CarrelliPage() {
   const [mostraPrezzi, setMostraPrezzi] = useState(false)
   const [righeSelezionate, setRigheSelezionate] = useState([])
   const [salvandoRigaId, setSalvandoRigaId] = useState(null)
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 768 : false
+  )
 
   // ===== CREAZIONE CARRELLO DA LISTINO =====
   const [mostraCreaDaListino, setMostraCreaDaListino] = useState(false)
@@ -52,6 +55,16 @@ export default function CarrelliPage() {
   const [righeNuovoCarrello, setRigheNuovoCarrello] = useState([])
   const [cercandoListino, setCercandoListino] = useState(false)
   const [salvandoNuovoCarrello, setSalvandoNuovoCarrello] = useState(false)
+
+  useEffect(() => {
+    function aggiornaVista() {
+      setIsMobile(window.innerWidth <= 768)
+    }
+
+    aggiornaVista()
+    window.addEventListener("resize", aggiornaVista)
+    return () => window.removeEventListener("resize", aggiornaVista)
+  }, [])
 
   useEffect(() => {
     caricaCarrelli()
@@ -1289,7 +1302,7 @@ export default function CarrelliPage() {
   )
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={isMobile ? { padding: 8, width: "100%", boxSizing: "border-box", overflowX: "hidden" } : { padding: 20 }}>
       <h2>🛒 Carrelli</h2>
 
       {interventoIdDaUrl && (
@@ -1350,6 +1363,7 @@ export default function CarrelliPage() {
         type="file"
         accept=".csv"
         disabled={caricandoCSV}
+        style={isMobile ? { width: "100%", maxWidth: "100%" } : undefined}
         onChange={(e) => {
           const file = e.target.files[0]
           if (file) importaCSV(file)
@@ -1401,7 +1415,7 @@ export default function CarrelliPage() {
           <div style={{ marginTop: 14 }}>
             <div style={{
               display: "grid",
-              gridTemplateColumns: "minmax(220px, 1fr) auto",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1fr) auto",
               gap: 10,
               alignItems: "center",
               marginBottom: 12
@@ -1441,7 +1455,7 @@ export default function CarrelliPage() {
                 value={listinoFiltro1}
                 onChange={(e) => setListinoFiltro1(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") cercaArticoliListino() }}
-                style={{ minWidth: 160, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+                style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #ccc", borderRadius: 5 } : { minWidth: 160, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
               />
 
               <input
@@ -1449,7 +1463,7 @@ export default function CarrelliPage() {
                 value={listinoFiltro2}
                 onChange={(e) => setListinoFiltro2(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") cercaArticoliListino() }}
-                style={{ minWidth: 160, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+                style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #ccc", borderRadius: 5 } : { minWidth: 160, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
               />
 
               <input
@@ -1457,7 +1471,7 @@ export default function CarrelliPage() {
                 value={listinoFiltro3}
                 onChange={(e) => setListinoFiltro3(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") cercaArticoliListino() }}
-                style={{ minWidth: 160, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+                style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #ccc", borderRadius: 5 } : { minWidth: 160, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
               />
 
               <input
@@ -1465,7 +1479,7 @@ export default function CarrelliPage() {
                 value={listinoFiltro4}
                 onChange={(e) => setListinoFiltro4(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") cercaArticoliListino() }}
-                style={{ minWidth: 160, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+                style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #ccc", borderRadius: 5 } : { minWidth: 160, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
               />
 
               <button
@@ -1574,6 +1588,7 @@ export default function CarrelliPage() {
               <div style={{
                 maxHeight: 420,
                 overflowY: "auto",
+                overflowX: isMobile ? "auto" : "visible",
                 border: "1px solid #ddd",
                 borderRadius: 6,
                 background: "white",
@@ -1590,6 +1605,7 @@ export default function CarrelliPage() {
                       style={{
                         display: "grid",
                         gridTemplateColumns: mostraPrezzi ? "45px 130px 1fr 90px 120px" : "45px 130px 1fr 90px",
+                        minWidth: isMobile ? (mostraPrezzi ? 650 : 530) : "auto",
                         gap: 8,
                         alignItems: "center",
                         padding: 8,
@@ -1650,7 +1666,8 @@ export default function CarrelliPage() {
                 border: "1px solid #ddd",
                 borderRadius: 6,
                 background: "white",
-                padding: 10
+                padding: 10,
+                overflowX: isMobile ? "auto" : "visible"
               }}>
                 <h4 style={{ marginTop: 0 }}>Materiali nel nuovo carrello</h4>
 
@@ -1660,6 +1677,7 @@ export default function CarrelliPage() {
                     style={{
                       display: "grid",
                       gridTemplateColumns: mostraPrezzi ? "130px 1fr 90px 110px 90px" : "130px 1fr 90px 90px",
+                      minWidth: isMobile ? (mostraPrezzi ? 620 : 500) : "auto",
                       gap: 8,
                       alignItems: "center",
                       borderBottom: "1px solid #eee",
@@ -1735,6 +1753,7 @@ export default function CarrelliPage() {
           placeholder="Nome carrello"
           value={searchNome}
           onChange={(e) => setSearchNome(e.target.value)}
+          style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8 } : undefined}
         />
 
         <span>Da:</span>
@@ -1743,6 +1762,7 @@ export default function CarrelliPage() {
           type="date"
           value={dataDa}
           onChange={(e) => setDataDa(e.target.value)}
+          style={isMobile ? { flex: 1, minWidth: 0, padding: 8 } : undefined}
         />
 
         <span>A:</span>
@@ -1751,6 +1771,7 @@ export default function CarrelliPage() {
           type="date"
           value={dataA}
           onChange={(e) => setDataA(e.target.value)}
+          style={isMobile ? { flex: 1, minWidth: 0, padding: 8 } : undefined}
         />
 
         <button
@@ -1965,7 +1986,7 @@ export default function CarrelliPage() {
           <button
             onClick={aggiungiRigaVuotaCarrello}
             style={{
-              marginLeft: 10,
+              marginLeft: isMobile ? 0 : 10,
               marginBottom: 10,
               background: "#0d6efd",
               color: "white",
@@ -1985,7 +2006,7 @@ export default function CarrelliPage() {
               setRigheSelezionate([])
               setDescrizioneRicerca("")
             }}
-            style={{ marginLeft: 10 }}
+            style={{ marginLeft: isMobile ? 0 : 10, marginBottom: isMobile ? 10 : 0 }}
           >
             ❌ Chiudi
           </button>
@@ -2004,7 +2025,7 @@ export default function CarrelliPage() {
               value={filtro1}
               onChange={(e) => setFiltro1(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") ref2.current?.focus() }}
-              style={{ minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+              style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #ccc", borderRadius: 5 } : { minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
             />
 
             <input
@@ -2013,7 +2034,7 @@ export default function CarrelliPage() {
               value={filtro2}
               onChange={(e) => setFiltro2(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") ref3.current?.focus() }}
-              style={{ minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+              style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #ccc", borderRadius: 5 } : { minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
             />
 
             <input
@@ -2022,7 +2043,7 @@ export default function CarrelliPage() {
               value={filtro3}
               onChange={(e) => setFiltro3(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") ref4.current?.focus() }}
-              style={{ minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+              style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #ccc", borderRadius: 5 } : { minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
             />
 
             <input
@@ -2038,7 +2059,7 @@ export default function CarrelliPage() {
                   })
                 }
               }}
-              style={{ minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
+              style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #ccc", borderRadius: 5 } : { minWidth: 170, padding: 8, border: "1px solid #ccc", borderRadius: 5 }}
             />
 
             <button
@@ -2110,6 +2131,7 @@ export default function CarrelliPage() {
             </div>
           )}
 
+          <div style={{ overflowX: isMobile ? "auto" : "visible" }}>
           {righeFiltrate.map((r) => {
             const giaPresente = materialeGiaPresente(r)
             const rigaId = idRigaCarrello(r)
@@ -2122,6 +2144,7 @@ export default function CarrelliPage() {
                   gridTemplateColumns: mostraPrezzi
                     ? "45px 130px 1fr 90px 110px 180px"
                     : "45px 130px 1fr 90px 180px",
+                  minWidth: isMobile ? (mostraPrezzi ? 760 : 640) : "auto",
                   gap: 10,
                   borderBottom: "1px solid #ddd",
                   padding: 6,
@@ -2235,6 +2258,7 @@ export default function CarrelliPage() {
               </div>
             )
           })}
+          </div>
 
           {!interventoIdDaUrl ? (
             <>
@@ -2243,6 +2267,7 @@ export default function CarrelliPage() {
               <select
                 value={interventoSelezionato}
                 onChange={(e) => setInterventoSelezionato(e.target.value)}
+                style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8 } : undefined}
               >
                 <option value="">-- seleziona --</option>
                 {interventi.map(i => (
@@ -2280,6 +2305,8 @@ export default function CarrelliPage() {
               border: "none",
               padding: "8px 12px",
               borderRadius: 5,
+              width: isMobile ? "100%" : "auto",
+              marginBottom: isMobile ? 8 : 0,
               cursor: importando || righeSelezionate.length === 0 ? "not-allowed" : "pointer"
             }}
           >
@@ -2290,7 +2317,9 @@ export default function CarrelliPage() {
             onClick={() => inserisciInIntervento(false)}
             disabled={importando}
             style={{
-              marginLeft: 10,
+              marginLeft: isMobile ? 0 : 10,
+              width: isMobile ? "100%" : "auto",
+              marginBottom: isMobile ? 8 : 0,
               background: "#198754",
               color: "white",
               border: "none",
@@ -2306,7 +2335,8 @@ export default function CarrelliPage() {
             <button
               onClick={tornaAllIntervento}
               style={{
-                marginLeft: 10,
+                marginLeft: isMobile ? 0 : 10,
+                width: isMobile ? "100%" : "auto",
                 background: "#0d6efd",
                 color: "white",
                 border: "none",

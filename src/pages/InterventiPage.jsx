@@ -1992,33 +1992,13 @@ export default function InterventiPage() {
           </div>
 
           <div ref={materialiSectionRef} style={isMobile ? sectionMobile : section}>
-            <div style={isMobile ? materialHeaderMobile : materialHeader}>
-              <h3 style={sectionTitle}>📦 Materiali inseriti</h3>
+            <h3 style={sectionTitle}>📦 Materiali</h3>
 
-              {!showAltroMat && (
-                <button onClick={() => setShowAltroMat(true)} style={secondaryButton}>
-                  ➕ Materiale libero
-                </button>
-              )}
-
-              {showAltroMat && (
-                <button
-                  onClick={() => {
-                    setShowAltroMat(false)
-                    setAltroMat({
-                      codice: "",
-                      descrizione: "",
-                      quantita: 1,
-                    })
-                  }}
-                  style={secondaryButton}
-                >
-                  ❌ Chiudi
-                </button>
-              )}
-            </div>
-
-            {editingId && (
+            {!editingId ? (
+              <div style={materialiNonSalvatoBox}>
+                💾 Salva prima l’intervento. Subito dopo potrai scegliere da dove inserire i materiali.
+              </div>
+            ) : (
               <div style={materialiScelteBox}>
                 {interventoAppenaSalvato && (
                   <div style={materialiSalvatiMsg}>
@@ -2026,22 +2006,34 @@ export default function InterventiPage() {
                   </div>
                 )}
 
-                <div style={materialiScelteGrid}>
+                <div style={materialiScelteTitolo}>Scegli da dove aggiungere il materiale</div>
+                <div style={isMobile ? materialiScelteGridMobile : materialiScelteGrid}>
                   <button type="button" onClick={vaiABolle} style={materialeSceltaButton}>
-                    📄 Bolla / DDT
+                    <span style={materialeSceltaIcona}>📄</span>
+                    <span>BOLLA / DDT</span>
+                    <small style={materialeSceltaSotto}>Materiale arrivato da una bolla</small>
                   </button>
+
                   <button type="button" onClick={vaiACarrelli} style={materialeSceltaButton}>
-                    🛒 Carrello
+                    <span style={materialeSceltaIcona}>🛒</span>
+                    <span>CARRELLO</span>
+                    <small style={materialeSceltaSotto}>Richiama un carrello già preparato</small>
                   </button>
+
+                  <button type="button" onClick={vaiAPreferiti} style={materialeSceltaButton}>
+                    <span style={materialeSceltaIcona}>⭐</span>
+                    <span>PREFERITI</span>
+                    <small style={materialeSceltaSotto}>Cerca negli articoli preferiti</small>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setShowAltroMat(true)}
                     style={materialeSceltaButton}
                   >
-                    ✏️ Materiale libero
-                  </button>
-                  <button type="button" onClick={vaiAPreferiti} style={materialeSceltaButton}>
-                    ⭐ Preferiti
+                    <span style={materialeSceltaIcona}>✏️</span>
+                    <span>MATERIALE LIBERO</span>
+                    <small style={materialeSceltaSotto}>Inserisci codice, descrizione e quantità</small>
                   </button>
                 </div>
               </div>
@@ -2049,6 +2041,19 @@ export default function InterventiPage() {
 
             {showAltroMat && (
               <div style={isMobile ? manualMaterialBoxMobile : manualMaterialBox}>
+                <div style={materialeLiberoTitolo}>
+                  <b>✏️ Materiale libero</b>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAltroMat(false)
+                      setAltroMat({ codice: "", descrizione: "", quantita: 1 })
+                    }}
+                    style={dangerSmall}
+                  >
+                    ✕ Chiudi
+                  </button>
+                </div>
                 <input
                   placeholder="Codice"
                   value={altroMat.codice}
@@ -2698,14 +2703,67 @@ const materialiScelteGrid = {
 }
 
 const materialeSceltaButton = {
-  minHeight: 48,
-  padding: "10px 12px",
-  borderRadius: 8,
+  minHeight: 86,
+  padding: "12px 14px",
+  borderRadius: 10,
   border: "1px solid #b6c8e6",
   background: "white",
   color: "#17365d",
   fontWeight: "bold",
   cursor: "pointer",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  textAlign: "left",
+  gap: 2,
+}
+
+
+
+const materialiNonSalvatoBox = {
+  marginBottom: 12,
+  padding: 12,
+  border: "1px solid #ffe69c",
+  borderRadius: 10,
+  background: "#fff8e1",
+  color: "#6b5200",
+  fontWeight: "bold",
+}
+
+const materialiScelteTitolo = {
+  marginBottom: 10,
+  fontSize: 16,
+  fontWeight: "bold",
+  color: "#17365d",
+}
+
+const materialiScelteGridMobile = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 10,
+}
+
+const materialeSceltaIcona = {
+  fontSize: 24,
+  lineHeight: 1,
+}
+
+const materialeSceltaSotto = {
+  display: "block",
+  marginTop: 3,
+  fontSize: 12,
+  fontWeight: "normal",
+  color: "#5f6b7a",
+}
+
+const materialeLiberoTitolo = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 4,
 }
 
 const infoBox = {

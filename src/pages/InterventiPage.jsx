@@ -57,6 +57,347 @@ export default function InterventiPage() {
 
   const [form, setForm] = useState(formVuoto)
 
+  // --- PROVA MODALITÀ VOCALE: Cliente -> OK -> Cantiere -> OK -> Descrizione -> OK ---
+  const [voceSupportata, setVoceSupportata] = useState(true)
+  const [voceAttiva, setVoceAttiva] = useState(false)
+  const [voceInAscolto, setVoceInAscolto] = useState(false)
+  const [vocePasso, setVocePasso] = useState("cliente")
+  const [voceMessaggio, setVoceMessaggio] = useState(
+    'Premi “Avvia voce” e pronuncia il cliente.'
+  )
+  const [voceCandidato, setVoceCandidato] = useState(null)
+
+  const recognitionRef = useRef(null)
+  const voceAttivaRef = useRef(false)
+  const vocePassoRef = useRef("cliente")
+  const voceCandidatoRef = useRef(null)
+  const clientiRef = useRef([])
+  const cantieriRef = useRef([])
+  const formRef = useRef(form)
+
+  useEffect(() => {
+    formRef.current = form
+  }, [form])
+
+  useEffect(() => {
+    clientiRef.current = clienti
+  }, [clienti])
+
+  useEffect(() => {
+    cantieriRef.current = cantieri
+  }, [cantieri])
+
+  useEffect(() => {
+    vocePassoRef.current = vocePasso
+  }, [vocePasso])
+
+  useEffect(() => {
+    voceCandidatoRef.current = voceCandidato
+  }, [voceCandidato])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition
+    setVoceSupportata(Boolean(SpeechRecognition))
+  }, [])
+
+  function normalizzaVoce(valore) {
+    return String(valore || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "")
+  }
+
+  function trovaMiglioreCorrispondenza(lista, testi, campo = "nome") {
+    const candidati = (testi || [])
+      .map((x) => normalizzaVoce(x))
+      .filter(Boolean)
+
+    if (!candidati.length) return null
+
+    const righe = (lista || []).map((riga) => ({
+      riga,
+      normalizzato: normalizzaVoce(riga?.[campo]),
+    }))
+
+    // 1) corrispondenza esatta ignorando spazi/punteggiatura (es. BORGOLUCE = BORGO LUCE)
+    for (const parlato of candidati) {
+      const esatto = righe.find((x) => x.normalizzato === parlato)
+      if (esatto) return esatto.riga
+    }
+
+    // 2) il nome inizia con ciò che è stato pronunciato, o viceversa
+    for (const parlato of candidati) {
+      const inizio = righe.find(
+        (x) =>
+          x.normalizzato.startsWith(parlato) ||
+          parlato.startsWith(x.normalizzato)
+      )
+      if (inizio) return inizio.riga
+    }
+
+    // 3) contenimento parziale
+    for (const parlato of candidati) {
+      const contiene = righe.find(
+        (x) =>
+          x.normalizzato.includes(parlato) ||
+          parlato.includes(x.normalizzato)
+      )
+      if (contiene) return contiene.riga
+    }
+
+    return null
+  }
+
+  function impostaPassoVoce(passo) {
+    vocePassoRef.current = passo
+    setVocePasso(passo)
+    voceCandidatoRef.current = null
+    setVoceCandidato(null)
+  }
+
+  function fermaVoce(messaggio = 'Modalità vocale in pausa.') {
+    voceAttivaRef.current = false
+    setVoceAttiva(false)
+    setVoceInAscolto(false)
+    setVoceMessaggio(messaggio)
+
+    try {
+      recognitionRef.current?.abort()
+    } catch (_) {
+      // niente
+    }
+    recognitionRef.current = null
+  }
+
+  function passaAScrittura() {
+    if (voceAttivaRef.current) {
+      fermaVoce('Voce in pausa. Ora puoi scrivere normalmente. Premi “Riprendi voce” per continuare.')
+    }
+  }
+
+  async function gestisciRisultatoVoce(testi) {
+    if (!voceAttivaRef.current) return
+
+    const frase = String(testi?.[0] || "").trim()
+    const comando = normalizzaVoce(frase)
+    const passo = vocePassoRef.current
+    const candidato = voceCandidatoRef.current
+    const comandoOk = ["ok", "okay", "okey", "okei"].includes(comando)
+
+    if (!frase) return
+
+    if (["annulla", "stop", "ferma", "basta"].includes(comando)) {
+      fermaVoce('Modalità vocale fermata.')
+      return
+    }
+
+    if (["ripeti", "cancella"].includes(comando)) {
+      voceCandidatoRef.current = null
+      setVoceCandidato(null)
+      setVoceMessaggio(
+        passo === "cliente"
+          ? 'Ripeti il nome del cliente.'
+          : passo === "cantiere"
+            ? 'Ripeti il cantiere.'
+            : 'Ripeti la descrizione.'
+      )
+      return
+    }
+
+    if (passo === "cliente") {
+      if (comandoOk) {
+        if (!candidato?.id) {
+          setVoceMessaggio('Prima pronuncia il cliente, poi dì “OK”.')
+          return
+        }
+
+        await selezionaCliente(candidato, false)
+        impostaPassoVoce("cantiere")
+
+        const disponibili = cantieriRef.current
+        setVoceMessaggio(
+          disponibili.length
+            ? 'Cliente confermato. Pronuncia il cantiere.'
+            : 'Cliente confermato. Non risultano cantieri: dì “SALTA” per passare alla descrizione.'
+        )
+        return
+      }
+
+      const trovato = trovaMiglioreCorrispondenza(clientiRef.current, testi)
+      if (!trovato) {
+        setForm((prev) => ({ ...prev, cliente_nome: frase, cliente_id: "", cantiere_id: "" }))
+        setShowClienti(true)
+        setClienteEvidenziato(0)
+        setVoceMessaggio(`Ho sentito “${frase}”, ma non trovo un cliente sicuro. Ripeti il nome.`)
+        return
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        cliente_nome: trovato.nome,
+        cliente_id: "",
+        cantiere_id: "",
+      }))
+      setShowClienti(true)
+      setClienteEvidenziato(0)
+      voceCandidatoRef.current = trovato
+      setVoceCandidato(trovato)
+      setVoceMessaggio(`Cliente proposto: ${trovato.nome}. Dì “OK” per confermare.`)
+      return
+    }
+
+    if (passo === "cantiere") {
+      if (["salta", "nessuno", "avanti"].includes(comando)) {
+        setForm((prev) => ({ ...prev, cantiere_id: "" }))
+        impostaPassoVoce("descrizione")
+        setVoceMessaggio('Cantiere saltato. Detta la descrizione dell’intervento.')
+        return
+      }
+
+      if (comandoOk) {
+        if (!candidato?.id) {
+          if (!cantieriRef.current.length) {
+            impostaPassoVoce("descrizione")
+            setVoceMessaggio('Passiamo alla descrizione. Dettala adesso.')
+            return
+          }
+          setVoceMessaggio('Prima pronuncia il cantiere, poi dì “OK”.')
+          return
+        }
+
+        setForm((prev) => ({ ...prev, cantiere_id: candidato.id }))
+        impostaPassoVoce("descrizione")
+        setVoceMessaggio(`Cantiere ${candidato.nome} confermato. Detta la descrizione.`)
+        return
+      }
+
+      const trovato = trovaMiglioreCorrispondenza(cantieriRef.current, testi)
+      if (!trovato) {
+        setVoceMessaggio(`Ho sentito “${frase}”, ma non trovo quel cantiere. Ripeti oppure dì “SALTA”.`)
+        return
+      }
+
+      voceCandidatoRef.current = trovato
+      setVoceCandidato(trovato)
+      setVoceMessaggio(`Cantiere proposto: ${trovato.nome}. Dì “OK” per confermare.`)
+      return
+    }
+
+    if (passo === "descrizione") {
+      if (comandoOk) {
+        if (!candidato?.testo) {
+          setVoceMessaggio('Prima detta la descrizione, poi dì “OK”.')
+          return
+        }
+
+        setForm((prev) => ({ ...prev, descrizione: candidato.testo }))
+        fermaVoce('Descrizione confermata. Prova vocale completata: puoi continuare normalmente.')
+        return
+      }
+
+      const nuovo = { testo: frase }
+      voceCandidatoRef.current = nuovo
+      setVoceCandidato(nuovo)
+      setForm((prev) => ({ ...prev, descrizione: frase }))
+      setVoceMessaggio(`Descrizione: “${frase}”. Dì “OK” per confermare oppure “RIPETI”.`)
+    }
+  }
+
+  function ascoltaVoce() {
+    if (!voceAttivaRef.current || typeof window === "undefined") return
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition
+
+    if (!SpeechRecognition) {
+      setVoceSupportata(false)
+      fermaVoce('Questo browser non supporta il riconoscimento vocale.')
+      return
+    }
+
+    try {
+      recognitionRef.current?.abort()
+    } catch (_) {
+      // niente
+    }
+
+    const recognition = new SpeechRecognition()
+    recognitionRef.current = recognition
+    recognition.lang = "it-IT"
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.maxAlternatives = 5
+
+    recognition.onstart = () => setVoceInAscolto(true)
+
+    recognition.onresult = (event) => {
+      const risultato = event.results?.[event.results.length - 1]
+      const alternative = []
+      if (risultato) {
+        for (let i = 0; i < risultato.length; i += 1) {
+          const testo = risultato[i]?.transcript?.trim()
+          if (testo) alternative.push(testo)
+        }
+      }
+      void gestisciRisultatoVoce(alternative)
+    }
+
+    recognition.onerror = (event) => {
+      setVoceInAscolto(false)
+      if (event.error === "aborted" || event.error === "no-speech") return
+
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        fermaVoce('Permesso microfono negato. Consenti il microfono al sito e riprova.')
+        return
+      }
+
+      setVoceMessaggio(`Errore microfono: ${event.error}. Riprovo automaticamente.`)
+    }
+
+    recognition.onend = () => {
+      setVoceInAscolto(false)
+      recognitionRef.current = null
+      if (voceAttivaRef.current) {
+        setTimeout(() => ascoltaVoce(), 350)
+      }
+    }
+
+    try {
+      recognition.start()
+    } catch (err) {
+      console.error(err)
+      setTimeout(() => {
+        if (voceAttivaRef.current) ascoltaVoce()
+      }, 500)
+    }
+  }
+
+  function avviaVoce() {
+    if (!voceSupportata) {
+      alert('Il riconoscimento vocale non è disponibile in questo browser.')
+      return
+    }
+
+    voceAttivaRef.current = true
+    setVoceAttiva(true)
+
+    if (!formRef.current.cliente_id) {
+      impostaPassoVoce("cliente")
+      setVoceMessaggio('Pronuncia il cliente. Quando compare quello giusto, dì “OK”.')
+    } else if (!formRef.current.cantiere_id && cantieriRef.current.length) {
+      impostaPassoVoce("cantiere")
+      setVoceMessaggio('Pronuncia il cantiere. Quando è corretto, dì “OK”.')
+    } else {
+      impostaPassoVoce("descrizione")
+      setVoceMessaggio('Detta la descrizione. Poi dì “OK”.')
+    }
+
+    ascoltaVoce()
+  }
+
   useEffect(() => {
     const aggiornaMobile = () => setIsMobile(window.innerWidth <= 700)
     aggiornaMobile()
@@ -167,11 +508,12 @@ export default function InterventiPage() {
   }
 
   function clientiFiltrati() {
-    const testo = form.cliente_nome.trim().toLowerCase()
-    if (!testo) return []
+    const testo = form.cliente_nome.trim()
+    const testoNorm = normalizzaVoce(testo)
+    if (!testoNorm) return []
 
     return clienti
-      .filter((c) => c.nome.toLowerCase().includes(testo))
+      .filter((c) => normalizzaVoce(c.nome).includes(testoNorm))
       .slice(0, 8)
   }
 
@@ -482,6 +824,7 @@ export default function InterventiPage() {
       return
     }
 
+    cantieriRef.current = data || []
     setCantieri(data || [])
 
     if (passaAlCampoDopo) {
@@ -1008,6 +1351,41 @@ export default function InterventiPage() {
           <div style={isMobile ? sectionMobile : section}>
             <h3 style={sectionTitle}>Dati intervento</h3>
 
+            <div style={voiceBox}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={voiceTitle}>🎤 PROVA MODALITÀ VOCALE</div>
+                <div style={voiceStatus}>
+                  {voceMessaggio}
+                </div>
+                {voceAttiva && (
+                  <div style={voiceStep}>
+                    Passo: {vocePasso === "cliente" ? "CLIENTE" : vocePasso === "cantiere" ? "CANTIERE" : "DESCRIZIONE"}
+                    {voceInAscolto ? " · 🎙️ ASCOLTO" : " · attendo microfono"}
+                  </div>
+                )}
+                {!voceSupportata && (
+                  <div style={voiceError}>
+                    Riconoscimento vocale non disponibile in questo browser.
+                  </div>
+                )}
+              </div>
+
+              {!voceAttiva ? (
+                <button
+                  type="button"
+                  onClick={avviaVoce}
+                  disabled={!voceSupportata}
+                  style={voceSupportata ? voiceButton : voiceButtonDisabled}
+                >
+                  🎤 {voceMessaggio.includes("pausa") ? "Riprendi voce" : "Avvia voce"}
+                </button>
+              ) : (
+                <button type="button" onClick={() => fermaVoce()} style={voiceStopButton}>
+                  ⏸ Pausa voce
+                </button>
+              )}
+            </div>
+
             <div style={{ position: "relative" }}>
               <input
                 ref={clienteInputRef}
@@ -1025,6 +1403,7 @@ export default function InterventiPage() {
                   setClienteEvidenziato(0)
                 }}
                 onFocus={() => setShowClienti(true)}
+                onPointerDown={passaAScrittura}
                 onKeyDown={gestisciTastieraCliente}
                 onBlur={() => setTimeout(() => setShowClienti(false), 200)}
                 style={inputFull}
@@ -1063,6 +1442,7 @@ export default function InterventiPage() {
               ref={cantiereSelectRef}
               value={form.cantiere_id}
               onChange={(e) => setForm({ ...form, cantiere_id: e.target.value })}
+              onPointerDown={passaAScrittura}
               onKeyDown={gestisciTastieraCantiere}
               style={inputFull}
             >
@@ -1079,6 +1459,7 @@ export default function InterventiPage() {
               type="date"
               value={form.data}
               onChange={(e) => setForm({ ...form, data: e.target.value })}
+              onPointerDown={passaAScrittura}
               onKeyDown={gestisciTastieraData}
               style={inputFull}
             />
@@ -1090,6 +1471,7 @@ export default function InterventiPage() {
               onChange={(e) =>
                 setForm({ ...form, descrizione: e.target.value })
               }
+              onPointerDown={passaAScrittura}
               onKeyDown={gestisciTastieraDescrizione}
               style={inputFull}
             />
@@ -1439,6 +1821,67 @@ export default function InterventiPage() {
       </div>
     </div>
   )
+}
+
+const voiceBox = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+  marginBottom: 12,
+  padding: 10,
+  border: "1px solid #b9d5ff",
+  borderRadius: 9,
+  background: "#f3f8ff",
+}
+
+const voiceTitle = {
+  fontWeight: "bold",
+  color: "#0d6efd",
+  marginBottom: 3,
+}
+
+const voiceStatus = {
+  fontSize: 14,
+  lineHeight: 1.35,
+  overflowWrap: "anywhere",
+}
+
+const voiceStep = {
+  marginTop: 4,
+  fontSize: 12,
+  fontWeight: "bold",
+  color: "#198754",
+}
+
+const voiceError = {
+  marginTop: 4,
+  fontSize: 12,
+  fontWeight: "bold",
+  color: "#b42318",
+}
+
+const voiceButton = {
+  minHeight: 44,
+  border: "none",
+  borderRadius: 8,
+  padding: "9px 14px",
+  background: "#0d6efd",
+  color: "white",
+  fontWeight: "bold",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+}
+
+const voiceButtonDisabled = {
+  ...voiceButton,
+  background: "#adb5bd",
+  cursor: "not-allowed",
+}
+
+const voiceStopButton = {
+  ...voiceButton,
+  background: "#6c757d",
 }
 
 const page = {

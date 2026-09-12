@@ -203,7 +203,7 @@ export default function InterventiPage() {
     voceOperatoreIndexRef.current = target
     setVoceOperatoreIndex(target)
     impostaPassoVoce("operatore")
-    setVoceMessaggio('Pronuncia il nome dell’operatore. Quando compare quello giusto, dì “OK”.')
+    setVoceMessaggio('Pronuncia il nome dell’operatore, oppure dì “SALVA” se hai finito. Quando compare quello giusto, dì “OK”.')
   }
 
   function impostaPassoVoce(passo) {
@@ -231,6 +231,24 @@ export default function InterventiPage() {
     if (voceAttivaRef.current) {
       fermaVoce('Voce in pausa. Ora puoi scrivere normalmente. Premi “Riprendi voce” per continuare.')
     }
+  }
+
+  // Cliente e operatore sono speciali: durante la modalità vocale puoi toccare il campo,
+  // scrivere a mano e poi dire OK senza interrompere il flusso vocale.
+  function scritturaClienteConVoce() {
+    if (!voceAttivaRef.current) return
+    voceCandidatoRef.current = null
+    setVoceCandidato(null)
+    setVoceMessaggio('Scrivi il cliente. Scegli dalla tendina se serve, poi dì “OK”.')
+  }
+
+  function scritturaOperatoreConVoce(index) {
+    if (!voceAttivaRef.current) return
+    voceOperatoreIndexRef.current = index
+    setVoceOperatoreIndex(index)
+    voceCandidatoRef.current = null
+    setVoceCandidato(null)
+    setVoceMessaggio('Scrivi l’operatore. Scegli dalla tendina se serve, poi dì “OK”.')
   }
 
   async function gestisciRisultatoVoce(testi) {
@@ -350,45 +368,65 @@ export default function InterventiPage() {
 
     if (passo === "cliente") {
       if (comandoOk) {
-        if (!candidato?.id) {
-          setVoceMessaggio('Prima pronuncia il cliente, poi dì “OK”.')
+        // Se il cliente è già stato scelto dalla tendina, confermiamo quello.
+        if (formRef.current.cliente_id) {
+          impostaPassoVoce("cantiere")
+          const disponibili = cantieriRef.current
+          const elenco = disponibili.map((x) => x.nome).join(" · ")
+          setVoceMessaggio(
+            disponibili.length
+              ? `Cliente confermato. Cantieri disponibili: ${elenco}. Pronuncia il cantiere e poi dì “OK”.`
+              : 'Cliente confermato. Non risultano cantieri: dì “SALTA” per passare alla descrizione.'
+          )
           return
         }
 
-        await selezionaCliente(candidato, false)
-        impostaPassoVoce("cantiere")
+        // Se l'utente ha scritto manualmente il nome, proviamo una corrispondenza esatta.
+        const scritto = normalizzaVoce(formRef.current.cliente_nome)
+        const esatto = clientiRef.current.find((x) => normalizzaVoce(x.nome) === scritto)
+        const daConfermare = esatto || candidato
+        if (!daConfermare?.id) {
+          setShowClienti(true)
+          setVoceMessaggio('Scegli il cliente corretto dalla tendina, oppure completa il nome e poi dì “OK”.')
+          return
+        }
 
+        await selezionaCliente(daConfermare, false)
+        impostaPassoVoce("cantiere")
         const disponibili = cantieriRef.current
         const elenco = disponibili.map((x) => x.nome).join(" · ")
         setVoceMessaggio(
           disponibili.length
-            ? `Cliente confermato. Cantieri disponibili: ${elenco}. Pronuncia il cantiere.`
+            ? `Cliente confermato. Cantieri disponibili: ${elenco}. Pronuncia il cantiere e poi dì “OK”.`
             : 'Cliente confermato. Non risultano cantieri: dì “SALTA” per passare alla descrizione.'
         )
         return
       }
 
-      const trovato = trovaMiglioreCorrispondenza(clientiRef.current, testi)
-      if (!trovato) {
-        setForm((prev) => ({ ...prev, cliente_nome: "", cliente_id: "", cantiere_id: "" }))
-        setShowClienti(false)
-        setVoceMessaggio(
-          `Ho sentito “${frase}”, ma non esiste un cliente corrispondente. Dì “CANCELLA” e ripeti il nome.`
-        )
-        return
-      }
-
-      setForm((prev) => ({
-        ...prev,
-        cliente_nome: trovato.nome,
-        cliente_id: "",
-        cantiere_id: "",
-      }))
+      // La voce diventa una ricerca: mostriamo tutte le possibilità nella tendina.
+      setForm((prev) => {
+        const prossimo = {
+          ...prev,
+          cliente_nome: frase,
+          cliente_id: "",
+          cantiere_id: "",
+        }
+        formRef.current = prossimo
+        return prossimo
+      })
+      setCantieri([])
+      cantieriRef.current = []
       setShowClienti(true)
       setClienteEvidenziato(0)
+
+      const trovato = trovaMiglioreCorrispondenza(clientiRef.current, testi)
       voceCandidatoRef.current = trovato
       setVoceCandidato(trovato)
-      setVoceMessaggio(`Cliente proposto: ${trovato.nome}. Dì “OK” per confermare.`)
+      setVoceMessaggio(
+        trovato
+          ? `Ho trovato ${trovato.nome}. Puoi cliccare la scelta giusta nella tendina oppure dire “OK”.`
+          : `Cerco “${frase}”. Scegli il cliente corretto nella tendina. Se non va bene, dì “CANCELLA” e ripeti.`
+      )
       return
     }
 
@@ -467,88 +505,108 @@ export default function InterventiPage() {
     if (passo === "operatore") {
       const idx = voceOperatoreIndexRef.current
 
+      // Quando siamo pronti per un nuovo operatore, "SALVA" termina direttamente l'intervento.
+      if (["salva", "adessosalva", "salvaintervento"].includes(comando)) {
+        fermaVoce('Salvo l’intervento.')
+        setTimeout(() => { void salva() }, 150)
+        return
+      }
+
       if (comandoOk) {
-        if (!candidato?.id) {
-          setVoceMessaggio('Prima pronuncia l’operatore, poi dì “OK”.')
+        const operatoreGiaScelto = formRef.current.operatori[idx]?.operatore_id
+        if (operatoreGiaScelto) {
+          impostaPassoVoce("ore")
+          setVoceMessaggio('Operatore confermato. Pronuncia le ore e poi dì “OK”.')
           return
         }
 
-        setForm((prev) => ({
-          ...prev,
-          operatori: prev.operatori.map((op, i) =>
-            i === idx ? { ...op, operatore_id: candidato.id } : op
-          ),
-        }))
-        setOperatoriRicerca((prev) => {
-          const nuovo = [...prev]
-          nuovo[idx] = candidato.nome
-          return nuovo
-        })
+        const scritto = normalizzaVoce(operatoriRicerca[idx] || "")
+        const esatto = operatoriDB.find((x) => normalizzaVoce(x.nome) === scritto)
+        const daConfermare = esatto || candidato
+        if (!daConfermare?.id) {
+          setShowOperatori((prev) => {
+            const nuovo = [...prev]
+            nuovo[idx] = true
+            return nuovo
+          })
+          setVoceMessaggio('Scegli l’operatore corretto dalla tendina, oppure completa il nome e poi dì “OK”.')
+          return
+        }
+
+        selezionaOperatore(daConfermare, idx, false)
         impostaPassoVoce("ore")
-        setVoceMessaggio(`Operatore ${candidato.nome} confermato. Pronuncia le ore, per esempio “otto” o “sette e mezzo”.`)
+        setVoceMessaggio(`Operatore ${daConfermare.nome} confermato. Pronuncia le ore e poi dì “OK”.`)
         return
       }
 
-      const trovato = trovaMiglioreCorrispondenza(operatoriDB, testi)
-      if (!trovato) {
-        setVoceMessaggio(`Ho sentito “${frase}”, ma non trovo quell’operatore. Dì “CANCELLA” e ripeti il nome.`)
-        return
-      }
-
-      voceCandidatoRef.current = trovato
-      setVoceCandidato(trovato)
+      // Anche l'operatore funziona come ricerca: mostriamo le possibilità.
       setOperatoriRicerca((prev) => {
         const nuovo = [...prev]
-        nuovo[idx] = trovato.nome
+        nuovo[idx] = frase
         return nuovo
+      })
+      setForm((prev) => {
+        const operatori = prev.operatori.map((op, i) =>
+          i === idx ? { ...op, operatore_id: "", ore: "" } : op
+        )
+        const prossimo = { ...prev, operatori }
+        formRef.current = prossimo
+        return prossimo
       })
       setShowOperatori((prev) => {
         const nuovo = [...prev]
         nuovo[idx] = true
         return nuovo
       })
-      setVoceMessaggio(`Operatore proposto: ${trovato.nome}. Dì “OK” per confermare.`)
+      setOperatoreEvidenziato((prev) => {
+        const nuovo = [...prev]
+        nuovo[idx] = 0
+        return nuovo
+      })
+
+      const trovato = trovaMiglioreCorrispondenza(operatoriDB, testi)
+      voceCandidatoRef.current = trovato
+      setVoceCandidato(trovato)
+      setVoceMessaggio(
+        trovato
+          ? `Ho trovato ${trovato.nome}. Puoi cliccare la scelta giusta oppure dire “OK”.`
+          : `Cerco “${frase}”. Scegli l’operatore corretto nella tendina. Se non va bene, dì “CANCELLA” e ripeti.`
+      )
       return
     }
 
     if (passo === "ore") {
       const idx = voceOperatoreIndexRef.current
+
+      if (comandoOk) {
+        const oreAttuali = Number(formRef.current.operatori[idx]?.ore || 0)
+        if (!(oreAttuali > 0)) {
+          setVoceMessaggio('Prima pronuncia le ore, poi dì “OK”.')
+          return
+        }
+
+        // OK sulle ore: apriamo subito la riga del prossimo operatore.
+        preparaOperatoreVoce(formRef.current.operatori.length)
+        setVoceMessaggio(`Ore ${oreAttuali} confermate. Pronuncia il prossimo operatore oppure dì “SALVA”.`)
+        return
+      }
+
       const ore = numeroDaVoce(frase)
       if (!ore) {
         setVoceMessaggio(`Non ho capito le ore da “${frase}”. Ripeti, per esempio “otto” oppure “sette e mezzo”.`)
         return
       }
 
-      setForm((prev) => ({
-        ...prev,
-        operatori: prev.operatori.map((op, i) =>
+      setForm((prev) => {
+        const operatori = prev.operatori.map((op, i) =>
           i === idx ? { ...op, ore } : op
-        ),
-      }))
-      impostaPassoVoce("dopoOperatore")
-      setVoceMessaggio(`Inserite ${ore} ore. Dì “ALTRO OPERATORE”, “FINE OPERATORI” oppure “ADESSO SALVA”.`)
+        )
+        const prossimo = { ...prev, operatori }
+        formRef.current = prossimo
+        return prossimo
+      })
+      setVoceMessaggio(`Ho inserito ${ore} ore. Dì “OK” per confermare oppure “CANCELLA” per ripetere.`)
       return
-    }
-
-    if (passo === "dopoOperatore") {
-      if (["altrooperatore", "aggiungioperatore", "altro"].includes(comando)) {
-        preparaOperatoreVoce(formRef.current.operatori.length)
-        return
-      }
-
-      if (["fineoperatori", "fine", "finito", "bastaoperatori"].includes(comando)) {
-        fermaVoce('Operatori completati. Puoi salvare l’intervento.')
-        setTimeout(() => salvaButtonRef.current?.focus(), 100)
-        return
-      }
-
-      if (["adessosalva", "salvaintervento", "salva"].includes(comando)) {
-        fermaVoce('Salvo l’intervento.')
-        setTimeout(() => { void salva() }, 150)
-        return
-      }
-
-      setVoceMessaggio('Dì “ALTRO OPERATORE”, “FINE OPERATORI” oppure “ADESSO SALVA”.')
     }
   }
 
@@ -944,12 +1002,14 @@ export default function InterventiPage() {
   }
 
   function selezionaOperatore(op, index, passaAlleOre = false) {
-    setForm((prev) => ({
-      ...prev,
-      operatori: prev.operatori.map((riga, i) =>
+    setForm((prev) => {
+      const operatori = prev.operatori.map((riga, i) =>
         i === index ? { ...riga, operatore_id: op.id } : riga
-      ),
-    }))
+      )
+      const prossimo = { ...prev, operatori }
+      formRef.current = prossimo
+      return prossimo
+    })
 
     setOperatoriRicerca((prev) => {
       const nuovo = [...prev]
@@ -1054,12 +1114,16 @@ export default function InterventiPage() {
   }
 
   async function selezionaCliente(c, passaAlCampoDopo = false) {
-    setForm((prev) => ({
-      ...prev,
-      cliente_id: c.id,
-      cliente_nome: c.nome,
-      cantiere_id: "",
-    }))
+    setForm((prev) => {
+      const prossimo = {
+        ...prev,
+        cliente_id: c.id,
+        cliente_nome: c.nome,
+        cantiere_id: "",
+      }
+      formRef.current = prossimo
+      return prossimo
+    })
 
     setShowClienti(false)
 
@@ -1669,7 +1733,7 @@ export default function InterventiPage() {
                   setClienteEvidenziato(0)
                 }}
                 onFocus={() => setShowClienti(true)}
-                onPointerDown={passaAScrittura}
+                onPointerDown={scritturaClienteConVoce}
                 onKeyDown={gestisciTastieraCliente}
                 onBlur={() => setTimeout(() => setShowClienti(false), 200)}
                 style={inputFull}
@@ -1681,7 +1745,23 @@ export default function InterventiPage() {
                     <div
                       key={c.id}
                       onMouseEnter={() => setClienteEvidenziato(index)}
-                      onClick={() => selezionaCliente(c, true)}
+                      onClick={() => {
+                        if (voceAttivaRef.current) {
+                          voceCandidatoRef.current = c
+                          setVoceCandidato(c)
+                          void (async () => {
+                            await selezionaCliente(c, false)
+                            const elenco = cantieriRef.current.map((x) => x.nome).join(" · ")
+                            setVoceMessaggio(
+                              elenco
+                                ? `Cliente scelto: ${c.nome}. Dì “OK”. Poi ti propongo i cantieri: ${elenco}.`
+                                : `Cliente scelto: ${c.nome}. Dì “OK” per continuare.`
+                            )
+                          })()
+                        } else {
+                          void selezionaCliente(c, true)
+                        }
+                      }}
                       style={{
                         padding: 8,
                         cursor: "pointer",
@@ -1762,6 +1842,7 @@ export default function InterventiPage() {
                       })
                     }}
                     onPointerDown={passaAScrittura}
+                    onPointerDown={() => scritturaOperatoreConVoce(i)}
                     onKeyDown={(e) => gestisciTastieraOperatore(e, i)}
                     onBlur={() => {
                       setTimeout(() => {
@@ -1787,7 +1868,16 @@ export default function InterventiPage() {
                               return nuovo
                             })
                           }}
-                          onClick={() => selezionaOperatore(operatore, i, true)}
+                          onClick={() => {
+                            if (voceAttivaRef.current) {
+                              voceCandidatoRef.current = operatore
+                              setVoceCandidato(operatore)
+                              selezionaOperatore(operatore, i, false)
+                              setVoceMessaggio(`Operatore scelto: ${operatore.nome}. Dì “OK” per continuare.`)
+                            } else {
+                              selezionaOperatore(operatore, i, true)
+                            }
+                          }}
                           style={{
                             padding: 8,
                             cursor: "pointer",

@@ -442,11 +442,7 @@ export default function InterventiPage() {
       }
 
       if (comandoOk) {
-        const cantiereSelezionato = cantieriRef.current.find(
-          (x) => String(x.id) === String(formRef.current.cantiere_id)
-        )
-        const cantiereDaConfermare = cantiereSelezionato || candidato
-        if (!cantiereDaConfermare?.id) {
+        if (!candidato?.id) {
           if (!cantieriRef.current.length) {
             voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
             voceDescrizionePezziRef.current = []
@@ -459,16 +455,12 @@ export default function InterventiPage() {
           return
         }
 
-        setForm((prev) => {
-          const prossimo = { ...prev, cantiere_id: cantiereDaConfermare.id }
-          formRef.current = prossimo
-          return prossimo
-        })
+        setForm((prev) => ({ ...prev, cantiere_id: candidato.id }))
         voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
         voceDescrizionePezziRef.current = []
         setVoceDescrizionePezzi([])
         impostaPassoVoce("descrizione")
-        setVoceMessaggio(`Cantiere ${cantiereDaConfermare.nome} confermato. Detta la descrizione a frasi. Dì “OK” solo quando hai finito.`)
+        setVoceMessaggio(`Cantiere ${candidato.nome} confermato. Detta la descrizione a frasi. Dì “OK” solo quando hai finito.`)
         return
       }
 
@@ -832,15 +824,6 @@ export default function InterventiPage() {
     return clienti
       .filter((c) => normalizzaVoce(c.nome).includes(testoNorm))
       .slice(0, 8)
-  }
-
-  function clientiVoceFiltrati() {
-    const testoNorm = normalizzaVoce(form.cliente_nome)
-    if (!testoNorm) return []
-
-    return clienti
-      .filter((c) => normalizzaVoce(c.nome).includes(testoNorm))
-      .slice(0, 12)
   }
 
   function gestisciTastieraCliente(e) {
@@ -1705,62 +1688,9 @@ export default function InterventiPage() {
                     {voceInAscolto ? " · 🎙️ ASCOLTO" : " · attendo microfono"}
                   </div>
                 )}
-                {voceAttiva && vocePasso === "cliente" && form.cliente_nome && (
-                  <div style={voiceOptions}>
-                    <b>Clienti trovati:</b>
-                    <div style={voiceChoiceGrid}>
-                      {clientiVoceFiltrati().map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          style={voiceChoiceButton}
-                          onPointerDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            voceCandidatoRef.current = c
-                            setVoceCandidato(c)
-                            void (async () => {
-                              await selezionaCliente(c, false)
-                              setVoceMessaggio(`Cliente scelto: ${c.nome}. Dì “OK” per vedere i cantieri.`)
-                            })()
-                          }}
-                        >
-                          {c.nome}
-                        </button>
-                      ))}
-                      {clientiVoceFiltrati().length === 0 && (
-                        <span>Nessun cliente trovato. Ripeti oppure scrivi nella casella.</span>
-                      )}
-                    </div>
-                  </div>
-                )}
                 {voceAttiva && vocePasso === "cantiere" && cantieri.length > 0 && (
                   <div style={voiceOptions}>
-                    <b>Cantieri disponibili:</b>
-                    <div style={voiceChoiceGrid}>
-                      {cantieri.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          style={{
-                            ...voiceChoiceButton,
-                            ...(String(form.cantiere_id) === String(c.id) ? voiceChoiceButtonSelected : {}),
-                          }}
-                          onPointerDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setForm((prev) => {
-                              const prossimo = { ...prev, cantiere_id: c.id }
-                              formRef.current = prossimo
-                              return prossimo
-                            })
-                            voceCandidatoRef.current = c
-                            setVoceCandidato(c)
-                            setVoceMessaggio(`Cantiere scelto: ${c.nome}. Dì “OK” per passare alla descrizione.`)
-                          }}
-                        >
-                          {c.nome}
-                        </button>
-                      ))}
-                    </div>
+                    <b>Cantieri disponibili:</b> {cantieri.map((c) => c.nome).join(" · ")}
                   </div>
                 )}
                 {!voceSupportata && (
@@ -1817,16 +1747,18 @@ export default function InterventiPage() {
                       onMouseEnter={() => setClienteEvidenziato(index)}
                       onClick={() => {
                         if (voceAttivaRef.current) {
-                          voceCandidatoRef.current = c
-                          setVoceCandidato(c)
                           void (async () => {
                             await selezionaCliente(c, false)
-                            const elenco = cantieriRef.current.map((x) => x.nome).join(" · ")
-                            setVoceMessaggio(
-                              elenco
-                                ? `Cliente scelto: ${c.nome}. Dì “OK”. Poi ti propongo i cantieri: ${elenco}.`
-                                : `Cliente scelto: ${c.nome}. Dì “OK” per continuare.`
-                            )
+                            if (cantieriRef.current.length > 0) {
+                              impostaPassoVoce("cantiere")
+                              setVoceMessaggio(`Cliente scelto: ${c.nome}. Scegli un cantiere dalla tendina.`)
+                            } else {
+                              voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
+                              voceDescrizionePezziRef.current = []
+                              setVoceDescrizionePezzi([])
+                              impostaPassoVoce("descrizione")
+                              setVoceMessaggio(`Cliente scelto: ${c.nome}. Nessun cantiere presente. Detta la descrizione.`)
+                            }
                           })()
                         } else {
                           void selezionaCliente(c, true)
@@ -1857,8 +1789,25 @@ export default function InterventiPage() {
             <select
               ref={cantiereSelectRef}
               value={form.cantiere_id}
-              onChange={(e) => setForm({ ...form, cantiere_id: e.target.value })}
-              onPointerDown={passaAScrittura}
+              onChange={(e) => {
+                const id = e.target.value
+                setForm((prev) => {
+                  const prossimo = { ...prev, cantiere_id: id }
+                  formRef.current = prossimo
+                  return prossimo
+                })
+                if (voceAttivaRef.current && id) {
+                  const scelto = cantieriRef.current.find((c) => String(c.id) === String(id))
+                  voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
+                  voceDescrizionePezziRef.current = []
+                  setVoceDescrizionePezzi([])
+                  impostaPassoVoce("descrizione")
+                  setVoceMessaggio(`Cantiere ${scelto?.nome || "selezionato"}. Detta la descrizione e dì “OK” quando hai finito.`)
+                }
+              }}
+              onPointerDown={() => {
+                if (!voceAttivaRef.current) passaAScrittura()
+              }}
               onKeyDown={gestisciTastieraCantiere}
               style={inputFull}
             >
@@ -1869,6 +1818,32 @@ export default function InterventiPage() {
                 </option>
               ))}
             </select>
+
+            {voceAttiva && vocePasso === "cantiere" && cantieri.length > 0 && (
+              <div style={voiceChoiceList}>
+                {cantieri.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    style={voiceChoiceButton}
+                    onClick={() => {
+                      setForm((prev) => {
+                        const prossimo = { ...prev, cantiere_id: c.id }
+                        formRef.current = prossimo
+                        return prossimo
+                      })
+                      voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
+                      voceDescrizionePezziRef.current = []
+                      setVoceDescrizionePezzi([])
+                      impostaPassoVoce("descrizione")
+                      setVoceMessaggio(`Cantiere ${c.nome}. Detta la descrizione e dì “OK” quando hai finito.`)
+                    }}
+                  >
+                    {c.nome}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <input
               ref={dataInputRef}
@@ -1911,7 +1886,6 @@ export default function InterventiPage() {
                         return nuovo
                       })
                     }}
-                    onPointerDown={passaAScrittura}
                     onPointerDown={() => scritturaOperatoreConVoce(i)}
                     onKeyDown={(e) => gestisciTastieraOperatore(e, i)}
                     onBlur={() => {
@@ -1940,10 +1914,11 @@ export default function InterventiPage() {
                           }}
                           onClick={() => {
                             if (voceAttivaRef.current) {
-                              voceCandidatoRef.current = operatore
-                              setVoceCandidato(operatore)
                               selezionaOperatore(operatore, i, false)
-                              setVoceMessaggio(`Operatore scelto: ${operatore.nome}. Dì “OK” per continuare.`)
+                              voceOperatoreIndexRef.current = i
+                              setVoceOperatoreIndex(i)
+                              impostaPassoVoce("ore")
+                              setVoceMessaggio(`Operatore ${operatore.nome} selezionato. Pronuncia le ore; le scrivo subito, poi dì “OK” per confermarle.`)
                             } else {
                               selezionaOperatore(operatore, i, true)
                             }
@@ -1995,6 +1970,18 @@ export default function InterventiPage() {
 
             <button onClick={() => aggiungiOperatore(true)} style={secondaryButton}>
               ➕ Operatore
+            </button>
+          </div>
+
+          <div style={saveInterventionBox}>
+            <button
+              ref={salvaButtonRef}
+              type="button"
+              onClick={salva}
+              disabled={saving}
+              style={saveInterventionButton}
+            >
+              {saving ? "Salvataggio..." : editingId ? "💾 AGGIORNA INTERVENTO" : "💾 SALVA INTERVENTO"}
             </button>
           </div>
 
@@ -2291,29 +2278,6 @@ const voiceOptions = {
   fontSize: 13,
   lineHeight: 1.4,
   overflowWrap: "anywhere",
-}
-
-const voiceChoiceGrid = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 8,
-  marginTop: 8,
-}
-
-const voiceChoiceButton = {
-  padding: "9px 12px",
-  borderRadius: 8,
-  border: "1px solid #90caf9",
-  background: "white",
-  color: "#0d47a1",
-  fontWeight: "bold",
-  cursor: "pointer",
-  textAlign: "left",
-}
-
-const voiceChoiceButtonSelected = {
-  background: "#dbeafe",
-  border: "2px solid #1976d2",
 }
 
 const voiceError = {
@@ -2653,6 +2617,45 @@ const dangerSmall = {
   padding: "8px 10px",
   borderRadius: 6,
   border: "1px solid #ccc",
+  cursor: "pointer",
+}
+
+const voiceChoiceList = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  marginTop: -4,
+  marginBottom: 10,
+  padding: 8,
+  border: "1px solid #93c5fd",
+  borderRadius: 8,
+  background: "#eff6ff",
+}
+
+const voiceChoiceButton = {
+  width: "100%",
+  textAlign: "left",
+  padding: "11px 12px",
+  border: "1px solid #bfdbfe",
+  borderRadius: 7,
+  background: "white",
+  cursor: "pointer",
+  fontWeight: "bold",
+}
+
+const saveInterventionBox = {
+  marginBottom: 12,
+}
+
+const saveInterventionButton = {
+  width: "100%",
+  minHeight: 52,
+  border: 0,
+  borderRadius: 10,
+  background: "#198754",
+  color: "white",
+  fontWeight: "bold",
+  fontSize: 16,
   cursor: "pointer",
 }
 

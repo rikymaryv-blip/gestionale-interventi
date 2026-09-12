@@ -33,11 +33,13 @@ export default function InterventiPage() {
   const operatoreInputRefs = useRef([])
   const oreInputRefs = useRef([])
   const salvaButtonRef = useRef(null)
+  const materialiSectionRef = useRef(null)
 
   const [preferiti, setPreferiti] = useState([])
   const [searchMat, setSearchMat] = useState("")
 
   const [showAltroMat, setShowAltroMat] = useState(false)
+  const [interventoAppenaSalvato, setInterventoAppenaSalvato] = useState(false)
 
   const [altroMat, setAltroMat] = useState({
     codice: "",
@@ -1347,6 +1349,7 @@ export default function InterventiPage() {
       quantita: 1,
     })
     setShowAltroMat(false)
+    setInterventoAppenaSalvato(false)
 
     if (dataDaUrl) {
       navigate(`/interventi?data=${dataDaUrl}`)
@@ -1630,15 +1633,18 @@ export default function InterventiPage() {
       }
 
       setEditingId(int.id)
+      setInterventoAppenaSalvato(true)
 
-      alert(
-        editingId
-          ? "✅ Intervento aggiornato"
-          : "✅ Intervento salvato. Ora puoi importare bolle, carrelli o preferiti dentro questo intervento."
-      )
+      // Aggiorna l'URL senza riaprire l'intervento e senza tornare in cima alla pagina.
+      if (typeof window !== "undefined") {
+        window.history.replaceState({}, "", `/interventi?edit_id=${int.id}`)
+      }
 
       caricaInterventi()
-      navigate(`/interventi?edit_id=${int.id}`)
+
+      setTimeout(() => {
+        materialiSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      }, 150)
     } catch (err) {
       console.error(err)
       alert("Errore imprevisto durante il salvataggio")
@@ -1973,7 +1979,19 @@ export default function InterventiPage() {
             </button>
           </div>
 
-          <div style={isMobile ? sectionMobile : section}>
+          <div style={salvaInterventoBox}>
+            <button
+              ref={salvaButtonRef}
+              type="button"
+              onClick={salva}
+              disabled={saving}
+              style={salvaInterventoGrande}
+            >
+              {saving ? "Salvataggio..." : editingId ? "💾 AGGIORNA INTERVENTO" : "💾 SALVA INTERVENTO"}
+            </button>
+          </div>
+
+          <div ref={materialiSectionRef} style={isMobile ? sectionMobile : section}>
             <div style={isMobile ? materialHeaderMobile : materialHeader}>
               <h3 style={sectionTitle}>📦 Materiali inseriti</h3>
 
@@ -1999,6 +2017,35 @@ export default function InterventiPage() {
                 </button>
               )}
             </div>
+
+            {editingId && (
+              <div style={materialiScelteBox}>
+                {interventoAppenaSalvato && (
+                  <div style={materialiSalvatiMsg}>
+                    ✅ Intervento salvato. Ora scegli da dove aggiungere i materiali.
+                  </div>
+                )}
+
+                <div style={materialiScelteGrid}>
+                  <button type="button" onClick={vaiABolle} style={materialeSceltaButton}>
+                    📄 Bolla / DDT
+                  </button>
+                  <button type="button" onClick={vaiACarrelli} style={materialeSceltaButton}>
+                    🛒 Carrello
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAltroMat(true)}
+                    style={materialeSceltaButton}
+                  >
+                    ✏️ Materiale libero
+                  </button>
+                  <button type="button" onClick={vaiAPreferiti} style={materialeSceltaButton}>
+                    ⭐ Preferiti
+                  </button>
+                </div>
+              </div>
+            )}
 
             {showAltroMat && (
               <div style={isMobile ? manualMaterialBoxMobile : manualMaterialBox}>
@@ -2605,6 +2652,59 @@ const dangerSmall = {
   padding: "8px 10px",
   borderRadius: 6,
   border: "1px solid #ccc",
+  cursor: "pointer",
+}
+
+const salvaInterventoBox = {
+  marginBottom: 12,
+  display: "flex",
+  justifyContent: "center",
+}
+
+const salvaInterventoGrande = {
+  width: "100%",
+  minHeight: 52,
+  border: "none",
+  borderRadius: 10,
+  background: "#198754",
+  color: "white",
+  fontSize: 16,
+  fontWeight: "bold",
+  cursor: "pointer",
+}
+
+const materialiScelteBox = {
+  marginTop: 8,
+  marginBottom: 12,
+  padding: 10,
+  border: "1px solid #cfe2ff",
+  borderRadius: 10,
+  background: "#f8fbff",
+}
+
+const materialiSalvatiMsg = {
+  marginBottom: 10,
+  padding: 9,
+  borderRadius: 8,
+  background: "#eaf7ee",
+  color: "#146c43",
+  fontWeight: "bold",
+}
+
+const materialiScelteGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
+}
+
+const materialeSceltaButton = {
+  minHeight: 48,
+  padding: "10px 12px",
+  borderRadius: 8,
+  border: "1px solid #b6c8e6",
+  background: "white",
+  color: "#17365d",
+  fontWeight: "bold",
   cursor: "pointer",
 }
 

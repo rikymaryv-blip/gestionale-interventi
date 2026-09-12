@@ -140,34 +140,58 @@ export default function FatturePage() {
       for (const o of i.ore_operatori || []) {
         const nomeOperatore = await getNomeOperatore(o.operatore_id)
 
-        await supabase.from("fatture_righe").insert({
-          fattura_id: fattura.id,
-          data: i.data,
-          descrizione: i.descrizione,
-          operatore: nomeOperatore,
-          ore: o.ore,
-        })
+        const { error: erroreRigaOre } = await supabase
+          .from("fatture_righe")
+          .insert({
+            fattura_id: fattura.id,
+            intervento_id: i.id,
+            data: i.data,
+            descrizione: i.descrizione,
+            operatore: nomeOperatore,
+            ore: o.ore,
+          })
+
+        if (erroreRigaOre) {
+          console.error(erroreRigaOre)
+          alert("Errore salvataggio righe ore: " + erroreRigaOre.message)
+          return
+        }
       }
 
       for (const m of i.materiali_bollettino || []) {
-        await supabase.from("fatture_righe").insert({
-          fattura_id: fattura.id,
-          data: i.data,
-          descrizione: i.descrizione,
-          codice: m.codice || "",
-          materiale: m.descrizione || "",
-          quantita: m.quantita || 0,
-        })
+        const { error: erroreRigaMateriale } = await supabase
+          .from("fatture_righe")
+          .insert({
+            fattura_id: fattura.id,
+            intervento_id: i.id,
+            data: i.data,
+            descrizione: i.descrizione,
+            codice: m.codice || "",
+            materiale: m.descrizione || "",
+            quantita: m.quantita || 0,
+          })
+
+        if (erroreRigaMateriale) {
+          console.error(erroreRigaMateriale)
+          alert("Errore salvataggio righe materiali: " + erroreRigaMateriale.message)
+          return
+        }
       }
     }
 
-    await supabase
+    const { error: erroreArchivio } = await supabase
       .from("interventi")
       .update({ archiviato: true })
       .in(
         "id",
         lista.map((i) => i.id)
       )
+
+    if (erroreArchivio) {
+      console.error(erroreArchivio)
+      alert("Fattura creata, ma errore archiviazione interventi: " + erroreArchivio.message)
+      return
+    }
 
     alert("✅ Fattura salvata")
 

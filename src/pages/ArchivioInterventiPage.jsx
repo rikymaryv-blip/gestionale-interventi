@@ -14,6 +14,8 @@ export default function ArchivioInterventiPage() {
   const [dataDa, setDataDa] = useState("")
   const [dataA, setDataA] = useState("")
 
+  const [selezionati, setSelezionati] = useState([])
+
   useEffect(() => {
     load()
   }, [])
@@ -45,7 +47,49 @@ export default function ArchivioInterventiPage() {
     }
 
     setInterventi(data || [])
+    setSelezionati([])
     setLoading(false)
+  }
+
+  function toggleSelezionato(id) {
+    setSelezionati(prev =>
+      prev.includes(id)
+        ? prev.filter(x => x !== id)
+        : [...prev, id]
+    )
+  }
+
+  function selezionaTuttiFiltrati() {
+    setSelezionati(interventiFiltrati.map(i => i.id))
+  }
+
+  function deselezionaTutti() {
+    setSelezionati([])
+  }
+
+  async function ripristinaMultipli(idsDaRipristinare, testoConferma) {
+    const idsPuliti = [...new Set((idsDaRipristinare || []).filter(Boolean))]
+
+    if (idsPuliti.length === 0) {
+      alert("Seleziona almeno un intervento da ripristinare")
+      return
+    }
+
+    if (!confirm(`${testoConferma}\n\nInterventi da ripristinare: ${idsPuliti.length}`)) return
+
+    const { error } = await supabase
+      .from("interventi")
+      .update({ archiviato: false })
+      .in("id", idsPuliti)
+
+    if (error) {
+      console.error(error)
+      alert("Errore ripristino interventi: " + error.message)
+      return
+    }
+
+    alert(`✅ Ripristinati ${idsPuliti.length} interventi`)
+    load()
   }
 
   async function ripristinaIntervento(i) {
@@ -146,6 +190,10 @@ export default function ArchivioInterventiPage() {
     return matchCliente && matchDataDa && matchDataA
   })
 
+  const selezionatiFiltrati = selezionati.filter(id =>
+    interventiFiltrati.some(i => i.id === id)
+  )
+
   return (
     <div style={{ padding: 20 }}>
 
@@ -237,6 +285,70 @@ export default function ArchivioInterventiPage() {
         </span>
       </div>
 
+      {!loading && interventiFiltrati.length > 0 && (
+        <div style={{
+          marginBottom: 15,
+          padding: 10,
+          border: "1px solid #ddd",
+          borderRadius: 6,
+          background: "#eef6ff",
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center"
+        }}>
+          <b>Selezionati:</b> {selezionatiFiltrati.length}
+
+          <button onClick={selezionaTuttiFiltrati}>
+            ✅ Seleziona tutti visibili
+          </button>
+
+          <button onClick={deselezionaTutti}>
+            ❌ Deseleziona tutti
+          </button>
+
+          <button
+            onClick={() =>
+              ripristinaMultipli(
+                selezionatiFiltrati,
+                "Vuoi ripristinare gli interventi selezionati?"
+              )
+            }
+            style={{
+              background: "#198754",
+              color: "white",
+              border: "none",
+              padding: "7px 10px",
+              borderRadius: 5,
+              cursor: "pointer",
+              fontWeight: "bold"
+            }}
+          >
+            ↩️ Ripristina selezionati
+          </button>
+
+          <button
+            onClick={() =>
+              ripristinaMultipli(
+                interventiFiltrati.map(i => i.id),
+                "Vuoi ripristinare TUTTI gli interventi visibili con questi filtri?"
+              )
+            }
+            style={{
+              background: "#0d6efd",
+              color: "white",
+              border: "none",
+              padding: "7px 10px",
+              borderRadius: 5,
+              cursor: "pointer",
+              fontWeight: "bold"
+            }}
+          >
+            ↩️ Ripristina tutti i filtrati
+          </button>
+        </div>
+      )}
+
       {loading && (
         <div style={{ marginTop: 15 }}>
           Caricamento archivio...
@@ -267,82 +379,101 @@ export default function ArchivioInterventiPage() {
         </div>
       )}
 
-      {interventiFiltrati.map(i => (
-        <div key={i.id} style={{
-          border: "1px solid #ccc",
-          marginTop: 10,
-          padding: 12,
-          borderRadius: 6,
-          background: "white"
-        }}>
+      {interventiFiltrati.map(i => {
+        const checked = selezionati.includes(i.id)
 
-          <div>
-            <b>📅 Data:</b> {i.data ? dayjs(i.data).format("DD/MM/YYYY") : "-"}
-          </div>
-
-          <div>
-            <b>👤 Cliente:</b> {i.clienti?.nome || "-"}
-          </div>
-
-          <div>
-            <b>🏗️ Cantiere:</b> {i.cantieri?.nome || "-"}
-          </div>
-
-          <div>
-            <b>📝 Descrizione:</b> {i.descrizione || "-"}
-          </div>
-
-          <div>
-            <b>📦 Materiali:</b> {i.materiali_bollettino?.length || 0}
-          </div>
-
-          <div style={{
+        return (
+          <div key={i.id} style={{
+            border: checked ? "2px solid #0d6efd" : "1px solid #ccc",
             marginTop: 10,
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap"
+            padding: 12,
+            borderRadius: 6,
+            background: checked ? "#f0f7ff" : "white"
           }}>
 
-            <button onClick={() => navigate(`/bollettino/${i.id}`)}>
-              👁 Apri
-            </button>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 8
+            }}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggleSelezionato(i.id)}
+                style={{ width: 22, height: 22 }}
+              />
+              <b>Seleziona intervento</b>
+            </div>
 
-            <button onClick={() => navigate(`/bolle?intervento_id=${i.id}`)}>
-              📦 Bolla
-            </button>
+            <div>
+              <b>📅 Data:</b> {i.data ? dayjs(i.data).format("DD/MM/YYYY") : "-"}
+            </div>
 
-            <button onClick={() => navigate(`/carrelli?intervento_id=${i.id}`)}>
-              📥 Carrello
-            </button>
+            <div>
+              <b>👤 Cliente:</b> {i.clienti?.nome || "-"}
+            </div>
 
-            <button onClick={() => navigate(`/preferiti?intervento_id=${i.id}`)}>
-              ⭐ Preferiti
-            </button>
+            <div>
+              <b>🏗️ Cantiere:</b> {i.cantieri?.nome || "-"}
+            </div>
 
-            <button
-              onClick={() => ripristinaIntervento(i)}
-              style={{ background: "#198754", color: "white" }}
-            >
-              ↩️ Ripristina
-            </button>
+            <div>
+              <b>📝 Descrizione:</b> {i.descrizione || "-"}
+            </div>
 
-            <button
-              onClick={() => ripristinaEApriInterventi(i)}
-              style={{ background: "#0d6efd", color: "white" }}
-            >
-              ✏️ Ripristina e modifica
-            </button>
+            <div>
+              <b>📦 Materiali:</b> {i.materiali_bollettino?.length || 0}
+            </div>
 
-            <button
-              onClick={() => eliminaIntervento(i)}
-              style={{ background: "red", color: "white" }}
-            >
-              🗑 Elimina
-            </button>
+            <div style={{
+              marginTop: 10,
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap"
+            }}>
 
+              <button onClick={() => navigate(`/bollettino/${i.id}`)}>
+                👁 Apri
+              </button>
+
+              <button onClick={() => navigate(`/bolle?intervento_id=${i.id}`)}>
+                📦 Bolla
+              </button>
+
+              <button onClick={() => navigate(`/carrelli?intervento_id=${i.id}`)}>
+                📥 Carrello
+              </button>
+
+              <button onClick={() => navigate(`/preferiti?intervento_id=${i.id}`)}>
+                ⭐ Preferiti
+              </button>
+
+              <button
+                onClick={() => ripristinaIntervento(i)}
+                style={{ background: "#198754", color: "white" }}
+              >
+                ↩️ Ripristina
+              </button>
+
+              <button
+                onClick={() => ripristinaEApriInterventi(i)}
+                style={{ background: "#0d6efd", color: "white" }}
+              >
+                ✏️ Ripristina e modifica
+              </button>
+
+              <button
+                onClick={() => eliminaIntervento(i)}
+                style={{ background: "red", color: "white" }}
+              >
+                🗑 Elimina
+              </button>
+
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
 
     </div>
   )

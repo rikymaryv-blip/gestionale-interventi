@@ -20,15 +20,21 @@ export default function StoricoFatturePage() {
   }, [])
 
   async function load() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("fatture")
       .select("*")
       .order("id", { ascending: false })
 
+    if (error) {
+      console.error("ERRORE LOAD FATTURE:", error)
+      alert("Errore caricamento storico fatture")
+      return
+    }
+
     setFatture(data || [])
 
     // 🔥 LISTA CLIENTI PER SUGGERIMENTI
-    const clienti = [...new Set((data || []).map(f => f.cliente_nome))]
+    const clienti = [...new Set((data || []).map(f => f.cliente_nome).filter(Boolean))]
     setClientiUnici(clienti)
   }
 
@@ -54,10 +60,16 @@ export default function StoricoFatturePage() {
   // EXCEL
   async function generaExcel(f) {
 
-    const { data: righe } = await supabase
+    const { data: righe, error } = await supabase
       .from("fatture_righe")
       .select("*")
       .eq("fattura_id", f.id)
+
+    if (error) {
+      console.error("ERRORE EXCEL:", error)
+      alert("Errore caricamento righe fattura")
+      return
+    }
 
     const operatori = (righe || []).filter(r => r.ore)
     const materiali = (righe || []).filter(r => r.quantita)
@@ -115,10 +127,86 @@ export default function StoricoFatturePage() {
   }
 
   async function segnaPagata(f) {
-    await supabase
+    const { error } = await supabase
       .from("fatture")
       .update({ pagata: true })
       .eq("id", f.id)
+
+    if (error) {
+      console.error("ERRORE PAGATA:", error)
+      alert("Errore aggiornamento fattura pagata")
+      return
+    }
+
+    load()
+  }
+
+  async function eliminaFattura(f) {
+    const conferma = window.prompt(
+      `ATTENZIONE!\n\nStai eliminando la fattura ${f.id} di ${f.cliente_nome}.\nGli interventi collegati torneranno da fatturare.\n\nPer confermare scrivi ELIMINA`
+    )
+
+    if (conferma !== "ELIMINA") return
+
+    // 1) Recupero gli interventi collegati dalle righe della fattura
+    const { data: righe, error: erroreRighe } = await supabase
+      .from("fatture_righe")
+      .select("intervento_id")
+      .eq("fattura_id", f.id)
+
+    if (erroreRighe) {
+      console.error("ERRORE RECUPERO RIGHE:", erroreRighe)
+      alert("Errore recupero interventi collegati: " + erroreRighe.message)
+      return
+    }
+
+    const idsInterventi = [
+      ...new Set(
+        (righe || [])
+          .map(r => r.intervento_id)
+          .filter(Boolean)
+      )
+    ]
+
+    // 2) Ripristino gli interventi collegati
+    if (idsInterventi.length > 0) {
+      const { error: erroreRipristino } = await supabase
+        .from("interventi")
+        .update({ archiviato: false })
+        .in("id", idsInterventi)
+
+      if (erroreRipristino) {
+        console.error("ERRORE RIPRISTINO INTERVENTI:", erroreRipristino)
+        alert("Errore ripristino interventi: " + erroreRipristino.message)
+        return
+      }
+    }
+
+    // 3) Elimino le righe della fattura
+    const { error: erroreEliminaRighe } = await supabase
+      .from("fatture_righe")
+      .delete()
+      .eq("fattura_id", f.id)
+
+    if (erroreEliminaRighe) {
+      console.error("ERRORE ELIMINA RIGHE:", erroreEliminaRighe)
+      alert("Interventi ripristinati, ma errore eliminazione righe fattura: " + erroreEliminaRighe.message)
+      return
+    }
+
+    // 4) Elimino la fattura
+    const { error: erroreEliminaFattura } = await supabase
+      .from("fatture")
+      .delete()
+      .eq("id", f.id)
+
+    if (erroreEliminaFattura) {
+      console.error("ERRORE ELIMINA FATTURA:", erroreEliminaFattura)
+      alert("Righe eliminate, ma errore eliminazione fattura: " + erroreEliminaFattura.message)
+      return
+    }
+
+    alert("✅ Fattura eliminata e interventi ripristinati")
 
     load()
   }
@@ -226,6 +314,7 @@ export default function StoricoFatturePage() {
 
           <div><b>Cliente:</b> {f.cliente_nome}</div>
           <div><b>Data:</b> {new Date(f.data).toLocaleDateString()}</div>
+          <div><b>Stato:</b> {f.pagata ? "Pagata" : "Da pagare"}</div>
 
           <div style={{
             marginTop: 10,
@@ -251,6 +340,20 @@ export default function StoricoFatturePage() {
                 💰 Pagata
               </button>
             )}
+
+            <button
+              onClick={() => eliminaFattura(f)}
+              style={{
+                background: "#dc3545",
+                color: "white",
+                border: "none",
+                padding: "6px 10px",
+                borderRadius: 4,
+                cursor: "pointer"
+              }}
+            >
+              🗑 Elimina
+            </button>
 
           </div>
 

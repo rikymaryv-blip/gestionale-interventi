@@ -1,6 +1,3 @@
-
-
-
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
@@ -12,14 +9,23 @@ dayjs.locale("it")
 export default function CalendarMonth() {
   const navigate = useNavigate()
 
-  const [mese, setMese] = useState(dayjs())
+  const [mese, setMese] = useState(() => {
+    const meseSalvato = sessionStorage.getItem("calendario_mese")
+    return meseSalvato ? dayjs(meseSalvato) : dayjs()
+  })
   const [interventi, setInterventi] = useState([])
   const [operatori, setOperatori] = useState([])
   const [operatoreFiltro, setOperatoreFiltro] = useState("")
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768)
-  const [giornoSelezionato, setGiornoSelezionato] = useState(
-    dayjs().format("YYYY-MM-DD")
-  )
+  const [giornoSelezionato, setGiornoSelezionato] = useState(() => {
+    const giornoSalvato = sessionStorage.getItem("calendario_giorno")
+    if (giornoSalvato) return giornoSalvato
+
+    const meseSalvato = sessionStorage.getItem("calendario_mese")
+    return meseSalvato
+      ? dayjs(meseSalvato).startOf("month").format("YYYY-MM-DD")
+      : dayjs().format("YYYY-MM-DD")
+  })
 
   useEffect(() => {
     const aggiornaMobile = () => setIsMobile(window.innerWidth <= 768)
@@ -34,6 +40,16 @@ export default function CalendarMonth() {
   useEffect(() => {
     caricaInterventi()
   }, [mese])
+
+  useEffect(() => {
+    sessionStorage.setItem("calendario_mese", mese.format("YYYY-MM-01"))
+  }, [mese])
+
+  useEffect(() => {
+    if (giornoSelezionato) {
+      sessionStorage.setItem("calendario_giorno", giornoSelezionato)
+    }
+  }, [giornoSelezionato])
 
   async function caricaOperatori() {
     const { data, error } = await supabase

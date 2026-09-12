@@ -57,7 +57,7 @@ export default function InterventiPage() {
 
   const [form, setForm] = useState(formVuoto)
 
-  // --- PROVA MODALITÀ VOCALE: Cliente -> OK -> Cantiere -> OK -> Descrizione -> OK ---
+  // --- MODALITÀ VOCALE: Cliente -> Cantiere -> Descrizione -> Operatori -> Ore ---
   const [voceSupportata, setVoceSupportata] = useState(true)
   const [voceAttiva, setVoceAttiva] = useState(false)
   const [voceInAscolto, setVoceInAscolto] = useState(false)
@@ -67,6 +67,7 @@ export default function InterventiPage() {
   )
   const [voceCandidato, setVoceCandidato] = useState(null)
   const [voceDescrizionePezzi, setVoceDescrizionePezzi] = useState([])
+  const [voceOperatoreIndex, setVoceOperatoreIndex] = useState(0)
 
   const recognitionRef = useRef(null)
   const voceAttivaRef = useRef(false)
@@ -77,6 +78,7 @@ export default function InterventiPage() {
   const formRef = useRef(form)
   const voceDescrizionePezziRef = useRef([])
   const voceDescrizioneBaseRef = useRef("")
+  const voceOperatoreIndexRef = useRef(0)
 
   useEffect(() => {
     formRef.current = form
@@ -145,6 +147,65 @@ export default function InterventiPage() {
     return null
   }
 
+  function numeroDaVoce(frase) {
+    const testo = String(frase || "").toLowerCase().trim().replace(",", ".")
+    const diretto = Number(testo.replace(/[^0-9.]/g, ""))
+    if (Number.isFinite(diretto) && diretto > 0) return diretto
+
+    const parole = {
+      mezzo: 0.5, mezza: 0.5, uno: 1, una: 1, due: 2, tre: 3, quattro: 4,
+      cinque: 5, sei: 6, sette: 7, otto: 8, nove: 9, dieci: 10,
+      undici: 11, dodici: 12, tredici: 13, quattordici: 14, quindici: 15,
+      sedici: 16, diciassette: 17, diciotto: 18, diciannove: 19, venti: 20,
+    }
+    const tokens = testo.split(/\s+/).filter(Boolean)
+    let totale = 0
+    let trovato = false
+    for (const token of tokens) {
+      if (Object.prototype.hasOwnProperty.call(parole, token)) {
+        totale += parole[token]
+        trovato = true
+      }
+    }
+    return trovato && totale > 0 ? totale : null
+  }
+
+  function preparaOperatoreVoce(index = null) {
+    let target = index
+    if (target == null) {
+      const esistenteVuoto = formRef.current.operatori.findIndex((op) => !op.operatore_id)
+      target = esistenteVuoto >= 0 ? esistenteVuoto : formRef.current.operatori.length
+    }
+
+    if (target >= formRef.current.operatori.length) {
+      setForm((prev) => {
+        const operatori = [...prev.operatori, { operatore_id: "", ore: "" }]
+        formRef.current = { ...prev, operatori }
+        return formRef.current
+      })
+      setOperatoriRicerca((prev) => {
+        const nuovo = [...prev]
+        nuovo[target] = ""
+        return nuovo
+      })
+      setShowOperatori((prev) => {
+        const nuovo = [...prev]
+        nuovo[target] = false
+        return nuovo
+      })
+      setOperatoreEvidenziato((prev) => {
+        const nuovo = [...prev]
+        nuovo[target] = 0
+        return nuovo
+      })
+    }
+
+    voceOperatoreIndexRef.current = target
+    setVoceOperatoreIndex(target)
+    impostaPassoVoce("operatore")
+    setVoceMessaggio('Pronuncia il nome dell’operatore. Quando compare quello giusto, dì “OK”.')
+  }
+
   function impostaPassoVoce(passo) {
     vocePassoRef.current = passo
     setVocePasso(passo)
@@ -196,7 +257,13 @@ export default function InterventiPage() {
           ? 'Ripeti il nome del cliente.'
           : passo === "cantiere"
             ? 'Ripeti il cantiere.'
-            : 'Continua a dettare la descrizione.'
+            : passo === "descrizione"
+              ? 'Continua a dettare la descrizione.'
+              : passo === "operatore"
+                ? 'Ripeti il nome dell’operatore.'
+                : passo === "ore"
+                  ? 'Ripeti il numero di ore.'
+                  : 'Dì “ALTRO OPERATORE” oppure “FINE OPERATORI”.'
       )
       return
     }
@@ -227,6 +294,40 @@ export default function InterventiPage() {
             ? `Cantiere cancellato. Possibilità: ${elenco}. Pronuncia il cantiere.`
             : 'Cantiere cancellato. Non risultano cantieri: dì “SALTA”.'
         )
+        return
+      }
+
+      if (passo === "operatore") {
+        const idx = voceOperatoreIndexRef.current
+        setOperatoriRicerca((prev) => {
+          const nuovo = [...prev]
+          nuovo[idx] = ""
+          return nuovo
+        })
+        setForm((prev) => ({
+          ...prev,
+          operatori: prev.operatori.map((op, i) =>
+            i === idx ? { ...op, operatore_id: "", ore: "" } : op
+          ),
+        }))
+        setVoceMessaggio('Operatore cancellato. Pronuncia di nuovo il nome dell’operatore.')
+        return
+      }
+
+      if (passo === "ore") {
+        const idx = voceOperatoreIndexRef.current
+        setForm((prev) => ({
+          ...prev,
+          operatori: prev.operatori.map((op, i) =>
+            i === idx ? { ...op, ore: "" } : op
+          ),
+        }))
+        setVoceMessaggio('Ore cancellate. Pronuncia di nuovo il numero di ore.')
+        return
+      }
+
+      if (passo === "dopoOperatore") {
+        preparaOperatoreVoce(voceOperatoreIndexRef.current)
         return
       }
 
@@ -345,7 +446,7 @@ export default function InterventiPage() {
           return
         }
 
-        fermaVoce('Descrizione confermata. Puoi continuare normalmente.')
+        preparaOperatoreVoce()
         return
       }
 
@@ -360,6 +461,94 @@ export default function InterventiPage() {
       setVoceMessaggio(
         `Aggiunto: “${frase}”. Continua a dettare. Dì “CANCELLA” per togliere solo l’ultima frase oppure “OK” quando hai finito.`
       )
+      return
+    }
+
+    if (passo === "operatore") {
+      const idx = voceOperatoreIndexRef.current
+
+      if (comandoOk) {
+        if (!candidato?.id) {
+          setVoceMessaggio('Prima pronuncia l’operatore, poi dì “OK”.')
+          return
+        }
+
+        setForm((prev) => ({
+          ...prev,
+          operatori: prev.operatori.map((op, i) =>
+            i === idx ? { ...op, operatore_id: candidato.id } : op
+          ),
+        }))
+        setOperatoriRicerca((prev) => {
+          const nuovo = [...prev]
+          nuovo[idx] = candidato.nome
+          return nuovo
+        })
+        impostaPassoVoce("ore")
+        setVoceMessaggio(`Operatore ${candidato.nome} confermato. Pronuncia le ore, per esempio “otto” o “sette e mezzo”.`)
+        return
+      }
+
+      const trovato = trovaMiglioreCorrispondenza(operatoriDB, testi)
+      if (!trovato) {
+        setVoceMessaggio(`Ho sentito “${frase}”, ma non trovo quell’operatore. Dì “CANCELLA” e ripeti il nome.`)
+        return
+      }
+
+      voceCandidatoRef.current = trovato
+      setVoceCandidato(trovato)
+      setOperatoriRicerca((prev) => {
+        const nuovo = [...prev]
+        nuovo[idx] = trovato.nome
+        return nuovo
+      })
+      setShowOperatori((prev) => {
+        const nuovo = [...prev]
+        nuovo[idx] = true
+        return nuovo
+      })
+      setVoceMessaggio(`Operatore proposto: ${trovato.nome}. Dì “OK” per confermare.`)
+      return
+    }
+
+    if (passo === "ore") {
+      const idx = voceOperatoreIndexRef.current
+      const ore = numeroDaVoce(frase)
+      if (!ore) {
+        setVoceMessaggio(`Non ho capito le ore da “${frase}”. Ripeti, per esempio “otto” oppure “sette e mezzo”.`)
+        return
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        operatori: prev.operatori.map((op, i) =>
+          i === idx ? { ...op, ore } : op
+        ),
+      }))
+      impostaPassoVoce("dopoOperatore")
+      setVoceMessaggio(`Inserite ${ore} ore. Dì “ALTRO OPERATORE”, “FINE OPERATORI” oppure “ADESSO SALVA”.`)
+      return
+    }
+
+    if (passo === "dopoOperatore") {
+      if (["altrooperatore", "aggiungioperatore", "altro"].includes(comando)) {
+        preparaOperatoreVoce(formRef.current.operatori.length)
+        return
+      }
+
+      if (["fineoperatori", "fine", "finito", "bastaoperatori"].includes(comando)) {
+        fermaVoce('Operatori completati. Puoi salvare l’intervento.')
+        setTimeout(() => salvaButtonRef.current?.focus(), 100)
+        return
+      }
+
+      if (["adessosalva", "salvaintervento", "salva"].includes(comando)) {
+        fermaVoce('Salvo l’intervento.')
+        setTimeout(() => { void salva() }, 150)
+        return
+      }
+
+      setVoceMessaggio('Dì “ALTRO OPERATORE”, “FINE OPERATORI” oppure “ADESSO SALVA”.')
     }
   }
 
@@ -447,12 +636,14 @@ export default function InterventiPage() {
     } else if (!formRef.current.cantiere_id && cantieriRef.current.length) {
       impostaPassoVoce("cantiere")
       setVoceMessaggio('Pronuncia il cantiere. Quando è corretto, dì “OK”.')
-    } else {
+    } else if (!String(formRef.current.descrizione || "").trim()) {
       voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
       voceDescrizionePezziRef.current = []
       setVoceDescrizionePezzi([])
       impostaPassoVoce("descrizione")
       setVoceMessaggio('Detta la descrizione a frasi. Dì “OK” solo quando hai finito.')
+    } else {
+      preparaOperatoreVoce()
     }
 
     ascoltaVoce()
@@ -1419,7 +1610,17 @@ export default function InterventiPage() {
                 </div>
                 {voceAttiva && (
                   <div style={voiceStep}>
-                    Passo: {vocePasso === "cliente" ? "CLIENTE" : vocePasso === "cantiere" ? "CANTIERE" : "DESCRIZIONE"}
+                    Passo: {vocePasso === "cliente"
+                      ? "CLIENTE"
+                      : vocePasso === "cantiere"
+                        ? "CANTIERE"
+                        : vocePasso === "descrizione"
+                          ? "DESCRIZIONE"
+                          : vocePasso === "operatore"
+                            ? `OPERATORE ${voceOperatoreIndex + 1}`
+                            : vocePasso === "ore"
+                              ? `ORE OPERATORE ${voceOperatoreIndex + 1}`
+                              : "OPERATORI"}
                     {voceInAscolto ? " · 🎙️ ASCOLTO" : " · attendo microfono"}
                   </div>
                 )}
@@ -1560,6 +1761,7 @@ export default function InterventiPage() {
                         return nuovo
                       })
                     }}
+                    onPointerDown={passaAScrittura}
                     onKeyDown={(e) => gestisciTastieraOperatore(e, i)}
                     onBlur={() => {
                       setTimeout(() => {
@@ -1620,6 +1822,7 @@ export default function InterventiPage() {
                   placeholder="Ore"
                   value={op.ore}
                   onChange={(e) => aggiornaOperatore(i, "ore", e.target.value)}
+                  onPointerDown={passaAScrittura}
                   onKeyDown={(e) => gestisciTastieraOre(e, i)}
                   style={isMobile ? { ...inputFull, width: 74, flex: "0 0 74px", marginBottom: 0, textAlign: "center" } : { ...inputFull, width: 90 }}
                 />

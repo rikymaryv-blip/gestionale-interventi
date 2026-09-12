@@ -66,6 +66,7 @@ export default function InterventiPage() {
     'Premi “Avvia voce” e pronuncia il cliente.'
   )
   const [voceCandidato, setVoceCandidato] = useState(null)
+  const [voceDescrizionePezzi, setVoceDescrizionePezzi] = useState([])
 
   const recognitionRef = useRef(null)
   const voceAttivaRef = useRef(false)
@@ -74,6 +75,8 @@ export default function InterventiPage() {
   const clientiRef = useRef([])
   const cantieriRef = useRef([])
   const formRef = useRef(form)
+  const voceDescrizionePezziRef = useRef([])
+  const voceDescrizioneBaseRef = useRef("")
 
   useEffect(() => {
     formRef.current = form
@@ -122,30 +125,21 @@ export default function InterventiPage() {
       normalizzato: normalizzaVoce(riga?.[campo]),
     }))
 
-    // 1) corrispondenza esatta ignorando spazi/punteggiatura (es. BORGOLUCE = BORGO LUCE)
+    // Prima scelta: deve coincidere con un nome realmente presente, ignorando spazi e segni.
+    // Esempio: "borgoluce" trova "BORGO LUCE".
     for (const parlato of candidati) {
       const esatto = righe.find((x) => x.normalizzato === parlato)
       if (esatto) return esatto.riga
     }
 
-    // 2) il nome inizia con ciò che è stato pronunciato, o viceversa
+    // Seconda scelta: accettiamo un prefisso solo se individua UN SOLO nome.
+    // Così evitiamo di proporre clienti sbagliati quando la voce viene capita male.
     for (const parlato of candidati) {
-      const inizio = righe.find(
-        (x) =>
-          x.normalizzato.startsWith(parlato) ||
-          parlato.startsWith(x.normalizzato)
+      if (parlato.length < 4) continue
+      const compatibili = righe.filter((x) =>
+        x.normalizzato.startsWith(parlato) || parlato.startsWith(x.normalizzato)
       )
-      if (inizio) return inizio.riga
-    }
-
-    // 3) contenimento parziale
-    for (const parlato of candidati) {
-      const contiene = righe.find(
-        (x) =>
-          x.normalizzato.includes(parlato) ||
-          parlato.includes(x.normalizzato)
-      )
-      if (contiene) return contiene.riga
+      if (compatibili.length === 1) return compatibili[0].riga
     }
 
     return null
@@ -194,7 +188,7 @@ export default function InterventiPage() {
       return
     }
 
-    if (["ripeti", "cancella"].includes(comando)) {
+    if (comando === "ripeti") {
       voceCandidatoRef.current = null
       setVoceCandidato(null)
       setVoceMessaggio(
@@ -202,7 +196,53 @@ export default function InterventiPage() {
           ? 'Ripeti il nome del cliente.'
           : passo === "cantiere"
             ? 'Ripeti il cantiere.'
-            : 'Ripeti la descrizione.'
+            : 'Continua a dettare la descrizione.'
+      )
+      return
+    }
+
+    if (comando === "cancella") {
+      voceCandidatoRef.current = null
+      setVoceCandidato(null)
+
+      if (passo === "cliente") {
+        setForm((prev) => ({
+          ...prev,
+          cliente_id: "",
+          cliente_nome: "",
+          cantiere_id: "",
+        }))
+        setCantieri([])
+        cantieriRef.current = []
+        setShowClienti(false)
+        setVoceMessaggio('Cliente cancellato. Pronuncia di nuovo il nome del cliente.')
+        return
+      }
+
+      if (passo === "cantiere") {
+        setForm((prev) => ({ ...prev, cantiere_id: "" }))
+        const elenco = cantieriRef.current.map((x) => x.nome).join(" · ")
+        setVoceMessaggio(
+          elenco
+            ? `Cantiere cancellato. Possibilità: ${elenco}. Pronuncia il cantiere.`
+            : 'Cantiere cancellato. Non risultano cantieri: dì “SALTA”.'
+        )
+        return
+      }
+
+      const pezzi = [...voceDescrizionePezziRef.current]
+      if (pezzi.length > 0) pezzi.pop()
+      voceDescrizionePezziRef.current = pezzi
+      setVoceDescrizionePezzi(pezzi)
+      const testo = [voceDescrizioneBaseRef.current, ...pezzi]
+        .filter(Boolean)
+        .join(" ")
+        .trim()
+      setForm((prev) => ({ ...prev, descrizione: testo }))
+      setVoceMessaggio(
+        pezzi.length
+          ? 'Ho cancellato solo l’ultima frase. Continua a dettare oppure dì “OK” quando hai finito.'
+          : 'Ultima frase cancellata. Continua a dettare oppure dì “OK” quando hai finito.'
       )
       return
     }
@@ -218,9 +258,10 @@ export default function InterventiPage() {
         impostaPassoVoce("cantiere")
 
         const disponibili = cantieriRef.current
+        const elenco = disponibili.map((x) => x.nome).join(" · ")
         setVoceMessaggio(
           disponibili.length
-            ? 'Cliente confermato. Pronuncia il cantiere.'
+            ? `Cliente confermato. Cantieri disponibili: ${elenco}. Pronuncia il cantiere.`
             : 'Cliente confermato. Non risultano cantieri: dì “SALTA” per passare alla descrizione.'
         )
         return
@@ -228,10 +269,11 @@ export default function InterventiPage() {
 
       const trovato = trovaMiglioreCorrispondenza(clientiRef.current, testi)
       if (!trovato) {
-        setForm((prev) => ({ ...prev, cliente_nome: frase, cliente_id: "", cantiere_id: "" }))
-        setShowClienti(true)
-        setClienteEvidenziato(0)
-        setVoceMessaggio(`Ho sentito “${frase}”, ma non trovo un cliente sicuro. Ripeti il nome.`)
+        setForm((prev) => ({ ...prev, cliente_nome: "", cliente_id: "", cantiere_id: "" }))
+        setShowClienti(false)
+        setVoceMessaggio(
+          `Ho sentito “${frase}”, ma non esiste un cliente corrispondente. Dì “CANCELLA” e ripeti il nome.`
+        )
         return
       }
 
@@ -252,16 +294,22 @@ export default function InterventiPage() {
     if (passo === "cantiere") {
       if (["salta", "nessuno", "avanti"].includes(comando)) {
         setForm((prev) => ({ ...prev, cantiere_id: "" }))
+        voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
+        voceDescrizionePezziRef.current = []
+        setVoceDescrizionePezzi([])
         impostaPassoVoce("descrizione")
-        setVoceMessaggio('Cantiere saltato. Detta la descrizione dell’intervento.')
+        setVoceMessaggio('Cantiere saltato. Detta la descrizione dell’intervento a frasi. Dì “OK” solo quando hai finito.')
         return
       }
 
       if (comandoOk) {
         if (!candidato?.id) {
           if (!cantieriRef.current.length) {
+            voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
+            voceDescrizionePezziRef.current = []
+            setVoceDescrizionePezzi([])
             impostaPassoVoce("descrizione")
-            setVoceMessaggio('Passiamo alla descrizione. Dettala adesso.')
+            setVoceMessaggio('Passiamo alla descrizione. Dettala a frasi e dì “OK” solo quando hai finito.')
             return
           }
           setVoceMessaggio('Prima pronuncia il cantiere, poi dì “OK”.')
@@ -269,8 +317,11 @@ export default function InterventiPage() {
         }
 
         setForm((prev) => ({ ...prev, cantiere_id: candidato.id }))
+        voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
+        voceDescrizionePezziRef.current = []
+        setVoceDescrizionePezzi([])
         impostaPassoVoce("descrizione")
-        setVoceMessaggio(`Cantiere ${candidato.nome} confermato. Detta la descrizione.`)
+        setVoceMessaggio(`Cantiere ${candidato.nome} confermato. Detta la descrizione a frasi. Dì “OK” solo quando hai finito.`)
         return
       }
 
@@ -288,21 +339,27 @@ export default function InterventiPage() {
 
     if (passo === "descrizione") {
       if (comandoOk) {
-        if (!candidato?.testo) {
-          setVoceMessaggio('Prima detta la descrizione, poi dì “OK”.')
+        const testoFinale = String(formRef.current.descrizione || "").trim()
+        if (!testoFinale) {
+          setVoceMessaggio('La descrizione è vuota. Detta almeno una frase, poi dì “OK”.')
           return
         }
 
-        setForm((prev) => ({ ...prev, descrizione: candidato.testo }))
-        fermaVoce('Descrizione confermata. Prova vocale completata: puoi continuare normalmente.')
+        fermaVoce('Descrizione confermata. Puoi continuare normalmente.')
         return
       }
 
-      const nuovo = { testo: frase }
-      voceCandidatoRef.current = nuovo
-      setVoceCandidato(nuovo)
-      setForm((prev) => ({ ...prev, descrizione: frase }))
-      setVoceMessaggio(`Descrizione: “${frase}”. Dì “OK” per confermare oppure “RIPETI”.`)
+      const pezzi = [...voceDescrizionePezziRef.current, frase]
+      voceDescrizionePezziRef.current = pezzi
+      setVoceDescrizionePezzi(pezzi)
+      const testo = [voceDescrizioneBaseRef.current, ...pezzi]
+        .filter(Boolean)
+        .join(" ")
+        .trim()
+      setForm((prev) => ({ ...prev, descrizione: testo }))
+      setVoceMessaggio(
+        `Aggiunto: “${frase}”. Continua a dettare. Dì “CANCELLA” per togliere solo l’ultima frase oppure “OK” quando hai finito.`
+      )
     }
   }
 
@@ -391,8 +448,11 @@ export default function InterventiPage() {
       impostaPassoVoce("cantiere")
       setVoceMessaggio('Pronuncia il cantiere. Quando è corretto, dì “OK”.')
     } else {
+      voceDescrizioneBaseRef.current = formRef.current.descrizione || ""
+      voceDescrizionePezziRef.current = []
+      setVoceDescrizionePezzi([])
       impostaPassoVoce("descrizione")
-      setVoceMessaggio('Detta la descrizione. Poi dì “OK”.')
+      setVoceMessaggio('Detta la descrizione a frasi. Dì “OK” solo quando hai finito.')
     }
 
     ascoltaVoce()
@@ -1363,6 +1423,11 @@ export default function InterventiPage() {
                     {voceInAscolto ? " · 🎙️ ASCOLTO" : " · attendo microfono"}
                   </div>
                 )}
+                {voceAttiva && vocePasso === "cantiere" && cantieri.length > 0 && (
+                  <div style={voiceOptions}>
+                    <b>Cantieri disponibili:</b> {cantieri.map((c) => c.nome).join(" · ")}
+                  </div>
+                )}
                 {!voceSupportata && (
                   <div style={voiceError}>
                     Riconoscimento vocale non disponibile in questo browser.
@@ -1464,7 +1529,7 @@ export default function InterventiPage() {
               style={inputFull}
             />
 
-            <input
+            <textarea
               ref={descrizioneInputRef}
               placeholder="Descrizione"
               value={form.descrizione}
@@ -1472,8 +1537,8 @@ export default function InterventiPage() {
                 setForm({ ...form, descrizione: e.target.value })
               }
               onPointerDown={passaAScrittura}
-              onKeyDown={gestisciTastieraDescrizione}
-              style={inputFull}
+              style={descriptionInput}
+              rows={5}
             />
           </div>
 
@@ -1482,7 +1547,7 @@ export default function InterventiPage() {
 
             {form.operatori.map((op, i) => (
               <div key={i} style={isMobile ? operatorRowMobile : operatorRow}>
-                <div style={isMobile ? { position: "relative", minWidth: 0, width: "100%", flex: 1 } : { position: "relative", minWidth: 240, flex: 1 }}>
+                <div style={isMobile ? { position: "relative", minWidth: 0, flex: 1 } : { position: "relative", minWidth: 240, flex: 1 }}>
                   <input
                     ref={(el) => (operatoreInputRefs.current[i] = el)}
                     placeholder="Cerca operatore..."
@@ -1556,7 +1621,7 @@ export default function InterventiPage() {
                   value={op.ore}
                   onChange={(e) => aggiornaOperatore(i, "ore", e.target.value)}
                   onKeyDown={(e) => gestisciTastieraOre(e, i)}
-                  style={isMobile ? { ...inputFull, width: "calc(100% - 52px)", marginBottom: 0 } : { ...inputFull, width: 90 }}
+                  style={isMobile ? { ...inputFull, width: 74, flex: "0 0 74px", marginBottom: 0, textAlign: "center" } : { ...inputFull, width: 90 }}
                 />
 
                 <button onClick={() => eliminaOperatore(i)} style={dangerSmall}>
@@ -1854,6 +1919,17 @@ const voiceStep = {
   color: "#198754",
 }
 
+const voiceOptions = {
+  marginTop: 7,
+  padding: "7px 9px",
+  borderRadius: 7,
+  background: "#fff",
+  border: "1px solid #cfe0ff",
+  fontSize: 13,
+  lineHeight: 1.4,
+  overflowWrap: "anywhere",
+}
+
 const voiceError = {
   marginTop: 4,
   fontSize: 12,
@@ -1922,7 +1998,7 @@ const operatorRowMobile = {
   gap: 8,
   alignItems: "center",
   marginBottom: 10,
-  flexWrap: "wrap",
+  flexWrap: "nowrap",
   width: "100%",
 }
 
@@ -2043,6 +2119,20 @@ const editingBox = {
   marginBottom: 10,
   borderRadius: 6,
   fontWeight: "bold",
+}
+
+const descriptionInput = {
+  width: "100%",
+  minHeight: 120,
+  padding: 9,
+  boxSizing: "border-box",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  marginBottom: 8,
+  resize: "vertical",
+  fontFamily: "inherit",
+  fontSize: 15,
+  lineHeight: 1.4,
 }
 
 const inputFull = {

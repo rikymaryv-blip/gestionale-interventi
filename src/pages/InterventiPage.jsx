@@ -49,6 +49,7 @@ export default function InterventiPage() {
   const [descFiltro2, setDescFiltro2] = useState("")
   const [descFiltro3, setDescFiltro3] = useState("")
   const [descFiltro4, setDescFiltro4] = useState("")
+  const [suggerimentiFonti, setSuggerimentiFonti] = useState([])
   const [rigenerandoPreferiti, setRigenerandoPreferiti] = useState(false)
   const [materialiSelezionati, setMaterialiSelezionati] = useState([])
   const [inserendoMateriali, setInserendoMateriali] = useState(false)
@@ -965,6 +966,44 @@ export default function InterventiPage() {
     }
   }
 
+  async function cercaFontiGlobali(testo, tipo) {
+    const q = String(testo || "").trim()
+    if (!q) return []
+
+    let query = supabase
+      .from("bolle_acquisto")
+      .select("id, data, tipo, nome, nome_carrello, numero_ddt, numero_ordine, creatore_carrello, descrizione_ricerca")
+      .limit(50)
+
+    if (tipo === "carrelli") {
+      query = query.eq("tipo", "carrello")
+    } else if (tipo === "bolle") {
+      query = query.or("tipo.is.null,tipo.neq.carrello")
+    }
+
+    const pattern = `%${q}%`
+
+    query = query.or(
+      [
+        `nome.ilike.${pattern}`,
+        `nome_carrello.ilike.${pattern}`,
+        `numero_ddt.ilike.${pattern}`,
+        `numero_ordine.ilike.${pattern}`,
+        `creatore_carrello.ilike.${pattern}`,
+        `descrizione_ricerca.ilike.${pattern}`,
+      ].join(",")
+    )
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error(error)
+      return []
+    }
+
+    return data || []
+  }
+
   async function caricaPreferiti(tipo = preferitiTipo, dataDa = preferitiDataDa, dataA = preferitiDataA) {
     setPreferitiLoading(true)
 
@@ -1113,6 +1152,147 @@ export default function InterventiPage() {
       })
       .filter((gruppo) => gruppo.materiali.length > 0)
   }
+
+  async function apriFonteEsattaDaSuggerimento(fonte) {
+    if (!fonte?.id) return
+
+    const tipo = fonte.tipo === "carrello" ? "carrelli" : "bolle"
+
+    setPreferitiTipo(tipo)
+    setPreferitiLoading(true)
+    setSearchMat("")
+    setSuggerimentiFonti([])
+
+    try {
+      const { data: righe, error: righeError } = await supabase
+        .from("bolle_righe")
+        .select("id, bolla_id, codice, descrizione, quantita, prezzo")
+        .eq("bolla_id", fonte.id)
+        .order("id", { ascending: true })
+
+      if (righeError) throw righeError
+
+      const materiali = (righe || [])
+        .map((r) => ({
+          id: r.id,
+          codice: String(r.codice || "").trim(),
+          descrizione: String(r.descrizione || "").trim(),
+          quantita: Number(r.quantita || 0),
+          prezzo: Number(r.prezzo || 0),
+        }))
+        .filter((r) => r.codice || r.descrizione)
+
+      const gruppo = {
+        id: fonte.id,
+        tipo: fonte.tipo === "carrello" ? "carrello" : "bolla",
+        data: fonte.data || null,
+        numero_ddt: String(fonte.numero_ddt || "").trim(),
+        numero_ordine: String(fonte.numero_ordine || "").trim(),
+        creatore: String(fonte.creatore_carrello || "").trim(),
+        nome_carrello: String(fonte.nome_carrello || fonte.nome || "").trim(),
+        descrizione_fonte: String(
+          fonte.descrizione_ricerca ||
+            fonte.nome_carrello ||
+            fonte.nome ||
+            ""
+        ).trim(),
+        materiali,
+      }
+
+      setPreferiti(materiali.length ? [gruppo] : [])
+
+      if (!materiali.length) {
+        alert(
+          tipo === "carrelli"
+            ? "Il carrello è stato trovato, ma non risultano materiali collegati."
+            : "La bolla è stata trovata, ma non risultano materiali collegati."
+        )
+      }
+    } catch (err) {
+      console.error(err)
+      alert("Errore caricamento contenuto: " + (err?.message || err))
+    } finally {
+      setPreferitiLoading(false)
+    }
+  }
+
+  async function eseguiRicercaGlobaleFonte() {
+    const testo = String(searchMat || "").trim()
+
+    if (!testo) {
+      void caricaPreferiti(preferitiTipo, preferitiDataDa, preferitiDataA)
+      return
+    }
+
+    setPreferitiLoading(true)
+
+    try {
+      const fonti = await cercaFontiGlobali(testo, preferitiTipo)
+      const ids = (fonti || []).map((f) => f.id).filter(Boolean)
+
+      if (!ids.length) {
+        setPreferiti([])
+        return
+      }
+
+      const { data: righe, error: righeError } = await supabase
+        .from("bolle_righe")
+        .select("id, bolla_id, codice, descrizione, quantita, prezzo")
+        .in("bolla_id", ids)
+        .order("id", { ascending: true })
+
+      if (righeError) throw righeError
+
+      const righePerFonte = new Map()
+
+      for (const r of righe || []) {
+        const key = String(r.bolla_id || "")
+        if (!righePerFonte.has(key)) righePerFonte.set(key, [])
+        righePerFonte.get(key).push({
+          id: r.id,
+          codice: String(r.codice || "").trim(),
+          descrizione: String(r.descrizione || "").trim(),
+          quantita: Number(r.quantita || 0),
+          prezzo: Number(r.prezzo || 0),
+        })
+      }
+
+      const gruppi = (fonti || [])
+        .map((fonte) => ({
+          id: fonte.id,
+          tipo: preferitiTipo === "carrelli" ? "carrello" : "bolla",
+          data: fonte.data || null,
+          numero_ddt: String(fonte.numero_ddt || "").trim(),
+          numero_ordine: String(fonte.numero_ordine || "").trim(),
+          creatore: String(fonte.creatore_carrello || "").trim(),
+          nome_carrello: String(fonte.nome_carrello || fonte.nome || "").trim(),
+          descrizione_fonte: String(
+            fonte.descrizione_ricerca ||
+              fonte.nome_carrello ||
+              fonte.nome ||
+              ""
+          ).trim(),
+          materiali: (righePerFonte.get(String(fonte.id)) || []).filter(
+            (r) => r.codice || r.descrizione
+          ),
+        }))
+        .filter((g) => g.materiali.length > 0)
+        .sort((a, b) => {
+          const da = a.data || ""
+          const db = b.data || ""
+          if (da !== db) return db.localeCompare(da)
+          return Number(b.id || 0) - Number(a.id || 0)
+        })
+
+      setPreferiti(gruppi)
+    } catch (err) {
+      console.error(err)
+      alert("Errore ricerca globale: " + (err?.message || err))
+    } finally {
+      setPreferitiLoading(false)
+    }
+  }
+
 
   function preferitiDescrizioneFiltrati() {
     const filtri = [descFiltro1, descFiltro2, descFiltro3, descFiltro4]
@@ -2795,12 +2975,57 @@ export default function InterventiPage() {
                     </div>
 
                     <div style={descrizioneFiltriGrid}>
-                      <input
-                        placeholder="Scelta 1 — es. WIV"
-                        value={descFiltro1}
-                        onChange={(e) => setDescFiltro1(e.target.value)}
-                        style={inputFull}
-                      />
+                      <div style={{ position: "relative" }}>
+                        <input
+                          placeholder="Scelta 1 — codice, descrizione o nome carrello"
+                          value={descFiltro1}
+                          onChange={async (e) => {
+                            const valore = e.target.value
+                            setDescFiltro1(valore)
+
+                            if (String(valore).trim().length < 2) {
+                              setSuggerimentiFonti([])
+                              return
+                            }
+
+                            const dati = await cercaFontiGlobali(valore, "")
+                            setSuggerimentiFonti(
+                              (dati || []).slice(0, 10).map((f) => ({
+                                ...f,
+                                label:
+                                  f.tipo === "carrello"
+                                    ? `🛒 ${f.nome_carrello || f.nome || f.descrizione_ricerca || "Carrello"}`
+                                    : `📄 ${f.numero_ddt ? `DDT ${f.numero_ddt}` : f.nome || "Bolla"}${f.creatore_carrello ? ` · ${f.creatore_carrello}` : ""}`,
+                                valore:
+                                  f.nome_carrello ||
+                                  f.descrizione_ricerca ||
+                                  f.numero_ddt ||
+                                  f.nome ||
+                                  "",
+                              }))
+                            )
+                          }}
+                          style={inputFull}
+                        />
+
+                        {suggerimentiFonti.length > 0 && (
+                          <div style={suggerimentiDropdown}>
+                            {suggerimentiFonti.map((s) => (
+                              <button
+                                type="button"
+                                key={s.id}
+                                onClick={() => {
+                                  setDescFiltro1(s.valore)
+                                  void apriFonteEsattaDaSuggerimento(s)
+                                }}
+                                style={suggerimentoRiga}
+                              >
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <input
                         placeholder="Scelta 2 — es. 32"
                         value={descFiltro2}
@@ -2858,16 +3083,32 @@ export default function InterventiPage() {
                     </div>
                   </div>
                 ) : (
-                  <input
-                    placeholder={
-                      preferitiTipo === "carrelli"
-                        ? "Cerca materiale, nome carrello, creatore o descrizione..."
-                        : "Cerca materiale, DDT, ordine, creatore o riferimento..."
-                    }
-                    value={searchMat}
-                    onChange={(e) => setSearchMat(e.target.value)}
-                    style={inputFull}
-                  />
+                  <div style={ricercaGlobaleRiga}>
+                    <input
+                      placeholder={
+                        preferitiTipo === "carrelli"
+                          ? "Cerca in TUTTI i carrelli..."
+                          : "Cerca in TUTTE le bolle..."
+                      }
+                      value={searchMat}
+                      onChange={(e) => setSearchMat(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          void eseguiRicercaGlobaleFonte()
+                        }
+                      }}
+                      style={{ ...inputFull, flex: 1 }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={eseguiRicercaGlobaleFonte}
+                      style={preferitiDateButton}
+                    >
+                      🔎 Cerca ovunque
+                    </button>
+                  </div>
                 )}
 
                 {preferitiLoading && (
@@ -3998,6 +4239,41 @@ const preferitoCheckbox = {
   fontSize: 20,
   lineHeight: 1,
   color: "#198754",
+}
+
+
+const ricercaGlobaleRiga = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  marginBottom: 10,
+  flexWrap: "wrap",
+}
+
+const suggerimentiDropdown = {
+  position: "absolute",
+  zIndex: 30,
+  left: 0,
+  right: 0,
+  top: "100%",
+  marginTop: 4,
+  background: "white",
+  border: "1px solid #cfd8e3",
+  borderRadius: 8,
+  boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+  maxHeight: 260,
+  overflowY: "auto",
+}
+
+const suggerimentoRiga = {
+  width: "100%",
+  textAlign: "left",
+  padding: "9px 10px",
+  border: "none",
+  borderBottom: "1px solid #edf1f5",
+  background: "white",
+  cursor: "pointer",
+  fontSize: 13,
 }
 
 const descrizioneFiltriBox = {

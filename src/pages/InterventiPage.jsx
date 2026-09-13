@@ -2441,7 +2441,8 @@ export default function InterventiPage() {
   }
 
   return (
-    <div style={isMobile ? pageMobile : page}>
+    <>
+      <div style={isMobile ? pageMobile : page}>
       <h2 style={isMobile ? { marginTop: 0, fontSize: 22 } : { marginTop: 0 }}>Interventi</h2>
 
       <div style={isMobile ? layoutMobile : layout}>
@@ -3580,6 +3581,41 @@ export default function InterventiPage() {
         </div>
       </div>
     </div>
+      {editingId && showPreferitiMat && materialiSelezionati.length > 0 && (
+        <div style={barraMaterialiFissa}>
+          <div style={barraMaterialiInfo}>
+            <b>✅ {materialiSelezionati.length} selezionati</b>
+            <span style={barraMaterialiSub}>
+              Puoi continuare a scorrere: il comando resta sempre qui.
+            </span>
+          </div>
+
+          <div style={barraMaterialiAzioni}>
+            <button
+              type="button"
+              onClick={() => setMaterialiSelezionati([])}
+              style={barraMaterialiAnnulla}
+            >
+              Pulisci
+            </button>
+
+            <button
+              type="button"
+              onClick={inserisciMaterialiSelezionati}
+              disabled={inserendoMateriali}
+              style={{
+                ...barraMaterialiInserisci,
+                opacity: inserendoMateriali ? 0.65 : 1,
+              }}
+            >
+              {inserendoMateriali
+                ? "Inserimento..."
+                : "➕ INSERISCI NELL'INTERVENTO"}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -3653,6 +3689,68 @@ const voiceButtonDisabled = {
 const voiceStopButton = {
   ...voiceButton,
   background: "#6c757d",
+}
+
+
+const barraMaterialiFissa = {
+  position: "fixed",
+  left: "50%",
+  bottom: 12,
+  transform: "translateX(-50%)",
+  zIndex: 9999,
+  width: "min(920px, calc(100vw - 24px))",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "10px 12px",
+  border: "2px solid #198754",
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.97)",
+  boxShadow: "0 8px 28px rgba(0,0,0,0.20)",
+  backdropFilter: "blur(6px)",
+}
+
+const barraMaterialiInfo = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+  minWidth: 0,
+  color: "#14532d",
+}
+
+const barraMaterialiSub = {
+  fontSize: 11,
+  color: "#667085",
+}
+
+const barraMaterialiAzioni = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+}
+
+const barraMaterialiAnnulla = {
+  padding: "9px 11px",
+  borderRadius: 8,
+  border: "1px solid #cfd8e3",
+  background: "white",
+  color: "#475467",
+  fontWeight: 800,
+  cursor: "pointer",
+}
+
+const barraMaterialiInserisci = {
+  padding: "11px 15px",
+  borderRadius: 8,
+  border: "none",
+  background: "#198754",
+  color: "white",
+  fontWeight: 900,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 }
 
 const page = {

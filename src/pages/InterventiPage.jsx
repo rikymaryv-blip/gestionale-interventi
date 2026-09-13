@@ -50,6 +50,10 @@ export default function InterventiPage() {
   const [descFiltro3, setDescFiltro3] = useState("")
   const [descFiltro4, setDescFiltro4] = useState("")
   const [suggerimentiFonti, setSuggerimentiFonti] = useState([])
+  const [fonteFiltro1, setFonteFiltro1] = useState("")
+  const [fonteFiltro2, setFonteFiltro2] = useState("")
+  const [fonteFiltro3, setFonteFiltro3] = useState("")
+  const [fonteFiltro4, setFonteFiltro4] = useState("")
   const [rigenerandoPreferiti, setRigenerandoPreferiti] = useState(false)
   const [materialiSelezionati, setMaterialiSelezionati] = useState([])
   const [inserendoMateriali, setInserendoMateriali] = useState(false)
@@ -1120,10 +1124,14 @@ export default function InterventiPage() {
   }
 
   function gruppiPreferitiFiltrati() {
-    const testo = String(searchMat || "").trim().toLowerCase()
-    if (!testo) return preferiti
+    const ricercaGenerale = String(searchMat || "").trim().toLowerCase()
+    const filtriFonte = [fonteFiltro1, fonteFiltro2, fonteFiltro3, fonteFiltro4]
+      .map((v) => String(v || "").trim().toLowerCase())
+      .filter(Boolean)
 
-    const parole = testo.split(/\s+/).filter(Boolean)
+    const paroleRicerca = ricercaGenerale
+      ? ricercaGenerale.split(/\s+/).filter(Boolean)
+      : []
 
     return preferiti
       .map((gruppo) => {
@@ -1137,16 +1145,28 @@ export default function InterventiPage() {
           .join(" ")
           .toLowerCase()
 
-        const fonteCombacia = parole.every((parola) =>
-          fonteHaystack.includes(parola)
-        )
+        const fonteCombacia =
+          paroleRicerca.length === 0 ||
+          paroleRicerca.every((parola) => fonteHaystack.includes(parola))
 
-        const materiali = fonteCombacia
-          ? gruppo.materiali
-          : gruppo.materiali.filter((m) => {
-              const haystack = `${m.codice || ""} ${m.descrizione || ""}`.toLowerCase()
-              return parole.every((parola) => haystack.includes(parola))
-            })
+        let materiali = gruppo.materiali
+
+        if (!fonteCombacia && paroleRicerca.length > 0) {
+          materiali = materiali.filter((m) => {
+            const haystack = `${m.codice || ""} ${m.descrizione || ""}`.toLowerCase()
+            return paroleRicerca.every((parola) => haystack.includes(parola))
+          })
+        }
+
+        if (filtriFonte.length > 0) {
+          materiali = materiali.filter((m) => {
+            const haystack = `${m.codice || ""} ${m.descrizione || ""}`
+              .toLowerCase()
+              .replace(/[-_/.,;:]+/g, " ")
+
+            return filtriFonte.every((filtro) => haystack.includes(filtro))
+          })
+        }
 
         return { ...gruppo, materiali }
       })
@@ -1215,6 +1235,7 @@ export default function InterventiPage() {
       setPreferitiLoading(false)
     }
   }
+
 
   async function eseguiRicercaGlobaleFonte() {
     const testo = String(searchMat || "").trim()
@@ -3083,7 +3104,8 @@ export default function InterventiPage() {
                     </div>
                   </div>
                 ) : (
-                  <div style={ricercaGlobaleRiga}>
+                  <>
+                    <div style={ricercaGlobaleRiga}>
                     <input
                       placeholder={
                         preferitiTipo === "carrelli"
@@ -3109,6 +3131,64 @@ export default function InterventiPage() {
                       🔎 Cerca ovunque
                     </button>
                   </div>
+
+                  {preferiti.length === 1 && (
+                    <div style={descrizioneFiltriBox}>
+                      <div style={descrizioneFiltriTitolo}>
+                        🔎 Ricerca materiali nel {preferitiTipo === "carrelli" ? "carrello" : "documento"}
+                      </div>
+                      <div style={descrizioneFiltriSub}>
+                        Inserisci fino a 4 parti di codice, parole o numeri. L'ordine non conta.
+                      </div>
+
+                      <div style={descrizioneFiltriGrid}>
+                        <input
+                          placeholder="Scelta 1 — es. WIV"
+                          value={fonteFiltro1}
+                          onChange={(e) => setFonteFiltro1(e.target.value)}
+                          style={inputFull}
+                        />
+                        <input
+                          placeholder="Scelta 2 — es. 32"
+                          value={fonteFiltro2}
+                          onChange={(e) => setFonteFiltro2(e.target.value)}
+                          style={inputFull}
+                        />
+                        <input
+                          placeholder="Scelta 3 — es. tubo"
+                          value={fonteFiltro3}
+                          onChange={(e) => setFonteFiltro3(e.target.value)}
+                          style={inputFull}
+                        />
+                        <input
+                          placeholder="Scelta 4 — opzionale"
+                          value={fonteFiltro4}
+                          onChange={(e) => setFonteFiltro4(e.target.value)}
+                          style={inputFull}
+                        />
+                      </div>
+
+                      <div style={descrizioneFiltriAzioni}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFonteFiltro1("")
+                            setFonteFiltro2("")
+                            setFonteFiltro3("")
+                            setFonteFiltro4("")
+                          }}
+                          style={secondaryButton}
+                        >
+                          🧹 Pulisci ricerca
+                        </button>
+
+                        <div style={descrizioneRisultatiCount}>
+                          Risultati: <b>{gruppiPreferitiFiltrati().reduce((tot, g) => tot + g.materiali.length, 0)}</b>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  </>
                 )}
 
                 {preferitiLoading && (

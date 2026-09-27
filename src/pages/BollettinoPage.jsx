@@ -144,70 +144,58 @@ export default function BollettinoPage() {
   async function apriGmailCliente() {
     if (loadingMail) return
 
-    if (!intervento?.clienti?.email) {
-      alert("Email cliente mancante")
-      return
-    }
+    let emailCliente = intervento?.clienti?.email?.trim() || ""
 
-    setLoadingMail(true)
-
-    try {
-      const res = await fetch(
-        "https://olmekymxlopdilkhucvf.supabase.co/functions/v1/genera-bollettino",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            intervento_id: id,
-            salva_storage: true
-          })
-        }
+    if (!emailCliente) {
+      const emailInserita = window.prompt(
+        "Email cliente mancante. Inserisci l'indirizzo email a cui inviare il bollettino:"
       )
 
-      const result = await res.json()
+      if (emailInserita === null) return
 
-      if (!res.ok) {
-        console.error(result)
-        alert("Errore creazione PDF")
+      emailCliente = emailInserita.trim()
+
+      if (!emailCliente) {
+        alert("Inserisci un indirizzo email")
         return
       }
 
-      const emailCliente = intervento.clienti.email
-      const cliente = intervento.clienti.nome || ""
+      const emailValida = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailCliente)
 
-      const data = intervento.data
-        ? dayjs(intervento.data).format("DD/MM/YYYY")
-        : ""
+      if (!emailValida) {
+        alert("L'indirizzo email inserito non è valido")
+        return
+      }
+    }
 
-      const oggetto = `Bollettino intervento ${data}`
+    const cliente = intervento?.clienti?.nome || ""
 
-      const testo = `Buongiorno ${cliente},
+    const data = intervento?.data
+      ? dayjs(intervento.data).format("DD/MM/YYYY")
+      : ""
 
-ecco il link del bollettino intervento:
+    const oggetto = `Bollettino intervento ${data}`
 
-${result.url}
+    const testo = `Buongiorno ${cliente},
+
+in allegato il bollettino dell'intervento.
 
 Descrizione:
 ${intervento.descrizione || "-"}
 
 Cordiali saluti.`
 
-      const gmailUrl =
-        "https://mail.google.com/mail/?view=cm&fs=1" +
-        `&to=${encodeURIComponent(emailCliente)}` +
-        `&cc=${encodeURIComponent("riky.maryv@gmail.com")}` +
-        `&su=${encodeURIComponent(oggetto)}` +
-        `&body=${encodeURIComponent(testo)}`
+    const gmailUrl =
+      "https://mail.google.com/mail/u/0/?view=cm&fs=1" +
+      `&to=${encodeURIComponent(emailCliente)}` +
+      `&cc=${encodeURIComponent("riky.maryv@gmail.com")}` +
+      `&su=${encodeURIComponent(oggetto)}` +
+      `&body=${encodeURIComponent(testo)}`
 
-      window.open(gmailUrl, "_blank")
+    const nuovaScheda = window.open(gmailUrl, "_blank")
 
-    } catch (err) {
-      console.error(err)
-      alert("Errore apertura Gmail")
-    } finally {
-      setLoadingMail(false)
+    if (!nuovaScheda) {
+      alert("Il browser ha bloccato Gmail. Consenti i popup per questo sito e riprova.")
     }
   }
 

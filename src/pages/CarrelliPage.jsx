@@ -884,15 +884,12 @@ export default function CarrelliPage() {
     return true
   }
 
-  async function modificaNomeCarrelloSelezionato() {
-    if (!selected?.id) {
-      alert("Seleziona prima un carrello")
-      return
-    }
+  async function rinominaCarrello(c) {
+    if (!c?.id) return
 
     if (!chiediCodiceOperazione()) return
 
-    const nomeAttuale = selected.nome_carrello || selected.nome || ""
+    const nomeAttuale = c.nome_carrello || c.nome || ""
     const nuovoNome = window.prompt("Nuovo nome carrello", nomeAttuale)
     if (nuovoNome === null) return
 
@@ -908,7 +905,7 @@ export default function CarrelliPage() {
         nome: nomePulito,
         nome_carrello: nomePulito
       })
-      .eq("id", selected.id)
+      .eq("id", c.id)
 
     if (error) {
       console.error(error)
@@ -916,19 +913,29 @@ export default function CarrelliPage() {
       return
     }
 
-    alert("✅ Nome carrello modificato")
-
-    setSelected({
-      ...selected,
-      nome: nomePulito,
-      nome_carrello: nomePulito
-    })
-
-    setCarrelli(carrelli.map(c =>
-      c.id === selected.id
-        ? { ...c, nome: nomePulito, nome_carrello: nomePulito }
-        : c
+    setCarrelli(prev => prev.map(x =>
+      String(x.id) === String(c.id)
+        ? { ...x, nome: nomePulito, nome_carrello: nomePulito }
+        : x
     ))
+
+    if (selected && String(selected.id) === String(c.id)) {
+      setSelected(prev => prev
+        ? { ...prev, nome: nomePulito, nome_carrello: nomePulito }
+        : prev
+      )
+    }
+
+    alert("✅ Nome carrello modificato")
+  }
+
+  async function modificaNomeCarrelloSelezionato() {
+    if (!selected?.id) {
+      alert("Seleziona prima un carrello")
+      return
+    }
+
+    await rinominaCarrello(selected)
   }
 
   async function eliminaCarrelloSelezionato() {
@@ -3288,6 +3295,13 @@ export default function CarrelliPage() {
                         <div key={`gruppo_${c.id}`} style={{ padding: 8, marginTop: 6, border: "1px solid #e1e1e1", borderRadius: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <span style={{ flex: 1, minWidth: 180 }}>🛒 <b>{nomeCarrello}</b></span>
                           <button onClick={() => selezionaCarrello(c)}>📦 Apri</button>
+                          <button
+                            onClick={() => rinominaCarrello(c)}
+                            disabled={salvandoInsieme}
+                            style={{ background: "#0d6efd", color: "white", border: "none", padding: "7px 10px", borderRadius: 5 }}
+                          >
+                            ✏️ Rinomina
+                          </button>
                           <button onClick={() => rimuoviCarrelloDaInsieme(c)} disabled={salvandoInsieme} style={{ color: "#b42318" }}>
                             ↩️ Togli dal gruppo
                           </button>
@@ -3335,6 +3349,13 @@ export default function CarrelliPage() {
                     <input type="checkbox" checked={carrelliSelezionatiInsieme.includes(String(c.id))} onChange={() => toggleCarrelloPerInsieme(c)} style={{ width: 22, height: 22 }} />
                     <span style={{ flex: 1, minWidth: 180 }}>🛒 <b>{nomeCarrello}</b></span>
                     <button onClick={() => selezionaCarrello(c)}>📦 Apri</button>
+                    <button
+                      onClick={() => rinominaCarrello(c)}
+                      disabled={salvandoInsieme}
+                      style={{ background: "#0d6efd", color: "white", border: "none", padding: "7px 10px", borderRadius: 5 }}
+                    >
+                      ✏️ Rinomina
+                    </button>
                   </div>
                 )
               })

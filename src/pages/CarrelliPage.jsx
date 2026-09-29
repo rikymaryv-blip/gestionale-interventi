@@ -32,6 +32,7 @@ export default function CarrelliPage() {
   const ref4 = useRef(null)
   const risultatiMaterialiRef = useRef(null)
   const dettaglioCarrelloRef = useRef(null)
+  const ricercaNomeRef = useRef(null)
 
   const [importando, setImportando] = useState(false)
   const [caricandoCSV, setCaricandoCSV] = useState(false)
@@ -440,6 +441,7 @@ export default function CarrelliPage() {
     setRicercaEseguita(false)
     setFocusSuggerimenti(null)
     setIndiceSuggerimentoNome(-1)
+    setIndiceSuggerimentoFornitore(-1)
     setIndiceSuggerimentoPromemoria(-1)
     setRicercaVelocePreferiti("")
     setRicercaVelocePreferiti2("")
@@ -450,6 +452,12 @@ export default function CarrelliPage() {
     setRighe([])
     setRigheSelezionate([])
     setDescrizioneRicerca("")
+    setFiltro1("")
+    setFiltro2("")
+    setFiltro3("")
+    setFiltro4("")
+
+    setTimeout(() => ricercaNomeRef.current?.focus(), 50)
   }
 
   function idPreferito(a) {
@@ -791,9 +799,9 @@ export default function CarrelliPage() {
     if (!mantieniFornitore) setRicercaInsieme("")
   }
 
-  function scegliSuggerimentoFornitore(valore) {
-    setRicercaInsieme(valore)
-    setRicercaNomeCarrello("")
+  async function scegliSuggerimentoFornitore(valore) {
+    const fornitoreScelto = String(valore || "").trim()
+    setRicercaInsieme(fornitoreScelto)
     setFocusSuggerimenti(null)
     setIndiceSuggerimentoFornitore(-1)
     setRicercaEseguita(true)
@@ -801,6 +809,20 @@ export default function CarrelliPage() {
     setRighe([])
     setRigheSelezionate([])
     setDescrizioneRicerca("")
+
+    const testoNome = ricercaNomeCarrello.trim().toLowerCase()
+    if (testoNome) {
+      const compatibili = carrelli.filter(c =>
+        String(c.insieme_carrello || "").trim().toLowerCase() === fornitoreScelto.toLowerCase() &&
+        String(c.nome || c.nome_carrello || "").trim().toLowerCase().includes(testoNome)
+      )
+
+      if (compatibili.length === 1) {
+        const c = compatibili[0]
+        setRicercaNomeCarrello(String(c.nome || c.nome_carrello || "").trim())
+        await selezionaCarrello(c)
+      }
+    }
   }
 
   function scegliSuggerimentoPromemoria(valore) {
@@ -1901,10 +1923,7 @@ export default function CarrelliPage() {
 
       await caricaMaterialiIntervento(interventoFinale)
 
-      setSelected(null)
-      setRighe([])
-      setRigheSelezionate([])
-      setDescrizioneRicerca("")
+      azzeraRicercaCarrelli()
       caricaCarrelli()
     } finally {
       setImportando(false)
@@ -2058,10 +2077,32 @@ export default function CarrelliPage() {
       )
     : []
 
+  // Quando descrizione/nome carrello + fornitore identificano un solo carrello,
+  // apri automaticamente i materiali senza richiedere un altro clic.
+  useEffect(() => {
+    if (!ricercaEseguita || !ricercaInsieme || !ricercaNomeCarrello.trim()) return
+    if (risultatiRicercaCarrelli.length !== 1) return
+
+    const carrello = risultatiRicercaCarrelli[0]
+    if (String(selected?.id || "") === String(carrello.id || "")) return
+
+    selezionaCarrello(carrello)
+  }, [
+    ricercaEseguita,
+    ricercaInsieme,
+    ricercaNomeCarrello,
+    risultatiRicercaCarrelli.length,
+    selected?.id
+  ])
+
   const testoSuggerimentoNome = ricercaNomeCarrello.trim().toLowerCase()
   const suggerimentiNomeCarrello = testoSuggerimentoNome
     ? Array.from(new Set(
         carrelli
+          .filter(c =>
+            !ricercaInsieme.trim() ||
+            String(c.insieme_carrello || "").toLowerCase().includes(ricercaInsieme.trim().toLowerCase())
+          )
           .map(c => String(c.nome || c.nome_carrello || "").trim())
           .filter(Boolean)
           .filter(nome => nome.toLowerCase().includes(testoSuggerimentoNome))
@@ -2075,9 +2116,18 @@ export default function CarrelliPage() {
       .filter(Boolean)
   )).sort((a, b) => a.localeCompare(b, "it"))
 
+  const fornitoriCompatibiliConNome = ricercaNomeCarrello.trim()
+    ? Array.from(new Set(
+        carrelli
+          .filter(c => String(c.nome || c.nome_carrello || "").toLowerCase().includes(ricercaNomeCarrello.trim().toLowerCase()))
+          .map(c => String(c.insieme_carrello || "").trim())
+          .filter(Boolean)
+      ))
+    : tuttiFornitori
+
   const suggerimentiFornitore = testoSuggerimentoFornitore
-    ? tuttiFornitori.filter(nome => nome.toLowerCase().includes(testoSuggerimentoFornitore)).slice(0, 10)
-    : tuttiFornitori.slice(0, 10)
+    ? fornitoriCompatibiliConNome.filter(nome => nome.toLowerCase().includes(testoSuggerimentoFornitore)).slice(0, 10)
+    : fornitoriCompatibiliConNome.slice(0, 10)
 
   // Se il testo corrisponde esattamente a un fornitore lo usiamo subito.
   // Se invece il testo parziale identifica UN SOLO fornitore, lo consideriamo
@@ -2576,12 +2626,15 @@ export default function CarrelliPage() {
           <div style={{ position: "relative" }}>
             <div style={{ fontSize: 13, fontWeight: "bold", marginBottom: 4 }}>Descrizione / nome carrello</div>
             <input
+              ref={ricercaNomeRef}
               value={ricercaNomeCarrello}
               onFocus={() => setFocusSuggerimenti("nome")}
               onChange={(e) => {
                 setRicercaNomeCarrello(e.target.value)
-                setRicercaInsieme("")
                 setRicercaEseguita(false)
+                setSelected(null)
+                setRighe([])
+                setRigheSelezionate([])
                 setFocusSuggerimenti("nome")
                 setIndiceSuggerimentoNome(-1)
               }}
@@ -2639,7 +2692,6 @@ export default function CarrelliPage() {
               onFocus={() => setFocusSuggerimenti("fornitore")}
               onChange={(e) => {
                 setRicercaInsieme(e.target.value)
-                setRicercaNomeCarrello("")
                 setRicercaEseguita(false)
                 setFocusSuggerimenti("fornitore")
                 setIndiceSuggerimentoFornitore(-1)
@@ -2837,23 +2889,132 @@ export default function CarrelliPage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => selezionaCarrello(c)}
+                  <div
                     style={{
-                      background: "#198754",
-                      color: "white",
-                      border: "none",
-                      padding: "10px 18px",
+                      padding: "9px 12px",
                       borderRadius: 6,
-                      cursor: "pointer",
-                      fontWeight: "bold"
+                      background: "#e8f5e9",
+                      color: "#146c43",
+                      fontWeight: "bold",
+                      fontSize: 13
                     }}
                   >
-                    📦 Apri materiali
-                  </button>
+                    📦 Materiali aperti automaticamente
+                  </div>
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {selected && righe.length > 0 && (
+          <div ref={risultatiMaterialiRef} style={{
+            marginTop: 16,
+            padding: isMobile ? 10 : 14,
+            background: "white",
+            border: "2px solid #198754",
+            borderRadius: 10
+          }}>
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>
+              📦 Materiali — {selected.nome_carrello || selected.nome || "Carrello"}
+            </div>
+            <div style={{ fontSize: 13, color: "#555", marginBottom: 10 }}>
+              🏪 {selected.insieme_carrello || ricercaInsieme || "Fornitore non indicato"}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8, marginBottom: 10 }}>
+              <input
+                placeholder="Filtra codice o descrizione"
+                value={filtro1}
+                onChange={(e) => setFiltro1(e.target.value)}
+                style={{ width: "100%", boxSizing: "border-box", padding: 10, fontSize: 16, border: "1px solid #bbb", borderRadius: 6 }}
+              />
+              <input
+                placeholder="Secondo filtro"
+                value={filtro2}
+                onChange={(e) => setFiltro2(e.target.value)}
+                style={{ width: "100%", boxSizing: "border-box", padding: 10, fontSize: 16, border: "1px solid #bbb", borderRadius: 6 }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 8, fontSize: 13 }}>
+              Trovati <b>{righeFiltrate.length}</b> materiali — selezionati <b>{righeSelezionate.length}</b>
+            </div>
+
+            <div style={{ maxHeight: isMobile ? "52vh" : 430, overflowY: "auto", border: "1px solid #e2e2e2", borderRadius: 8 }}>
+              {righeFiltrate.map(r => {
+                const rigaId = idRigaCarrello(r)
+                const checked = righeSelezionate.includes(rigaId)
+                return (
+                  <div
+                    key={`rapido_${rigaId}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "34px 1fr 72px" : "34px minmax(110px, 0.7fr) 1.8fr 80px",
+                      gap: 8,
+                      alignItems: "center",
+                      padding: isMobile ? "11px 8px" : "9px 10px",
+                      borderBottom: "1px solid #eee",
+                      background: checked ? "#eef8f1" : "white"
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleRigaSelezionata(r)}
+                      style={{ width: 20, height: 20 }}
+                    />
+                    {isMobile ? (
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 750, overflowWrap: "anywhere" }}>{r.codice || "Senza codice"}</div>
+                        <div style={{ fontSize: 14, marginTop: 2, overflowWrap: "anywhere" }}>{r.descrizione || ""}</div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ fontWeight: 750, overflowWrap: "anywhere" }}>{r.codice || "Senza codice"}</div>
+                        <div style={{ overflowWrap: "anywhere" }}>{r.descrizione || ""}</div>
+                      </>
+                    )}
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={r.quantita || 1}
+                      onChange={(e) => aggiornaCampoRiga(rigaId, "quantita", e.target.value)}
+                      aria-label="Quantità"
+                      style={{ width: "100%", boxSizing: "border-box", padding: 8, border: "1px solid #bbb", borderRadius: 6, fontSize: 16 }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <button
+                onClick={selezionaTutteFiltrate}
+                disabled={righeFiltrate.length === 0}
+                style={{ padding: "9px 12px" }}
+              >
+                ☑ Seleziona visibili
+              </button>
+              <button
+                onClick={() => inserisciInIntervento(true)}
+                disabled={importando || righeSelezionate.length === 0}
+                style={{
+                  flex: isMobile ? "1 1 100%" : "0 0 auto",
+                  background: righeSelezionate.length ? "#198754" : "#bbb",
+                  color: "white",
+                  border: "none",
+                  padding: isMobile ? "13px 14px" : "10px 16px",
+                  borderRadius: 7,
+                  fontWeight: 800,
+                  fontSize: isMobile ? 16 : 15,
+                  cursor: righeSelezionate.length ? "pointer" : "not-allowed"
+                }}
+              >
+                {importando ? "Inserimento..." : `➕ Inserisci selezionati (${righeSelezionate.length})`}
+              </button>
+            </div>
           </div>
         )}
 

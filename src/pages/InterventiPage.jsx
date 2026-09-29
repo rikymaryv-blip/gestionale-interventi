@@ -34,6 +34,7 @@ export default function InterventiPage() {
   const oreInputRefs = useRef([])
   const salvaButtonRef = useRef(null)
   const materialiSectionRef = useRef(null)
+  const ultimoMaterialeRef = useRef(null)
 
   const [preferiti, setPreferiti] = useState([])
   const [preferitiDescrizione, setPreferitiDescrizione] = useState([])
@@ -57,6 +58,9 @@ export default function InterventiPage() {
   const [rigenerandoPreferiti, setRigenerandoPreferiti] = useState(false)
   const [materialiSelezionati, setMaterialiSelezionati] = useState([])
   const [inserendoMateriali, setInserendoMateriali] = useState(false)
+  const [carrelloRicercaApertoId, setCarrelloRicercaApertoId] = useState(null)
+  const [fornitoriRicerca, setFornitoriRicerca] = useState([])
+  const [fornitoreRicercaSelezionato, setFornitoreRicercaSelezionato] = useState("")
 
   const [showAltroMat, setShowAltroMat] = useState(false)
   const [interventoAppenaSalvato, setInterventoAppenaSalvato] = useState(false)
@@ -976,7 +980,7 @@ export default function InterventiPage() {
 
     let query = supabase
       .from("bolle_acquisto")
-      .select("id, data, tipo, nome, nome_carrello, numero_ddt, numero_ordine, creatore_carrello, descrizione_ricerca")
+      .select("id, data, tipo, nome, nome_carrello, numero_ddt, numero_ordine, creatore_carrello, descrizione_ricerca, insieme_carrello")
       .limit(50)
 
     if (tipo === "carrelli") {
@@ -995,6 +999,7 @@ export default function InterventiPage() {
         `numero_ordine.ilike.${pattern}`,
         `creatore_carrello.ilike.${pattern}`,
         `descrizione_ricerca.ilike.${pattern}`,
+        `insieme_carrello.ilike.${pattern}`,
       ].join(",")
     )
 
@@ -1008,13 +1013,166 @@ export default function InterventiPage() {
     return data || []
   }
 
+  async function costruisciGruppiCarrelli(fonti) {
+    const ids = (fonti || []).map((f) => f.id).filter(Boolean)
+    if (!ids.length) return []
+
+    const { data: righe, error: righeError } = await supabase
+      .from("bolle_righe")
+      .select("id, bolla_id, codice, descrizione, quantita, prezzo")
+      .in("bolla_id", ids)
+      .order("id", { ascending: true })
+
+    if (righeError) throw righeError
+
+    const righePerFonte = new Map()
+    for (const r of righe || []) {
+      const key = String(r.bolla_id || "")
+      if (!righePerFonte.has(key)) righePerFonte.set(key, [])
+      righePerFonte.get(key).push({
+        id: r.id,
+        codice: String(r.codice || "").trim(),
+        descrizione: String(r.descrizione || "").trim(),
+        quantita: Number(r.quantita || 0),
+        prezzo: Number(r.prezzo || 0),
+      })
+    }
+
+    return (fonti || [])
+      .map((fonte) => ({
+        id: fonte.id,
+        tipo: "carrello",
+        data: fonte.data || null,
+        creatore: String(fonte.creatore_carrello || "").trim(),
+        nome_carrello: String(fonte.nome_carrello || fonte.nome || "").trim(),
+        fornitore: String(fonte.insieme_carrello || "").trim(),
+        descrizione_fonte: String(
+          fonte.descrizione_ricerca || fonte.nome_carrello || fonte.nome || ""
+        ).trim(),
+        materiali: (righePerFonte.get(String(fonte.id)) || []).filter(
+          (r) => r.codice || r.descrizione
+        ),
+      }))
+      .filter((g) => g.materiali.length > 0)
+      .sort((a, b) =>
+        String(a.nome_carrello || "").localeCompare(String(b.nome_carrello || ""), "it")
+      )
+  }
+
+  async function cercaMaterialiUnificata(testo) {
+    const q = String(testo || "").trim()
+
+    if (q.length < 2) {
+      setPreferiti([])
+      setFornitoriRicerca([])
+      setFornitoreRicercaSelezionato("")
+      setCarrelloRicercaApertoId(null)
+      return
+    }
+
+    setPreferitiLoading(true)
+
+    try {
+      const parole = q.toLowerCase().split(/\s+/).filter(Boolean)
+      const fonti = await cercaFontiGlobali(q, "carrelli")
+
+      // 1) Individua i fornitori/gruppi che corrispondono alla ricerca.
+      const fornitori = Array.from(
+        new Set(
+          (fonti || [])
+            .map((fonte) => String(fonte.insieme_carrello || "").trim())
+            .filter(Boolean)
+            .filter((nome) => {
+              const testoNome = nome.toLowerCase()
+              return parole.every((p) => testoNome.includes(p))
+            })
+        )
+      ).sort((a, b) => a.localeCompare(b, "it"))
+
+      setFornitoriRicerca(fornitori)
+      setFornitoreRicercaSelezionato("")
+      setCarrelloRicercaApertoId(null)
+
+      // 2) La ricerca diretta dei carrelli considera SOLO nome/descrizione/promemoria.
+      // Il fornitore viene gestito separatamente con la scelta qui sopra.
+      const fontiFiltrate = (fonti || []).filter((fonte) => {
+        const testoFonte = [
+          fonte.nome_carrello,
+          fonte.nome,
+          fonte.descrizione_ricerca,
+        ]
+          .join(" ")
+          .toLowerCase()
+
+        return parole.every((p) => testoFonte.includes(p))
+      })
+
+      const gruppi = await costruisciGruppiCarrelli(fontiFiltrate)
+      setPreferiti(gruppi)
+    } catch (err) {
+      console.error(err)
+      alert("Errore ricerca carrelli/fornitori: " + (err?.message || err))
+    } finally {
+      setPreferitiLoading(false)
+    }
+  }
+
+  async function apriFornitoreRicerca(nomeFornitore) {
+    const nome = String(nomeFornitore || "").trim()
+    if (!nome) return
+
+    setPreferitiLoading(true)
+    setFornitoreRicercaSelezionato(nome)
+    setCarrelloRicercaApertoId(null)
+
+    try {
+      const { data, error } = await supabase
+        .from("bolle_acquisto")
+        .select("id, data, tipo, nome, nome_carrello, numero_ddt, numero_ordine, creatore_carrello, descrizione_ricerca, insieme_carrello")
+        .eq("tipo", "carrello")
+        .ilike("insieme_carrello", nome)
+        .order("nome_carrello", { ascending: true })
+
+      if (error) throw error
+
+      const gruppi = await costruisciGruppiCarrelli(data || [])
+      setPreferiti(gruppi)
+    } catch (err) {
+      console.error(err)
+      alert("Errore caricamento carrelli del fornitore: " + (err?.message || err))
+      setPreferiti([])
+    } finally {
+      setPreferitiLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!showPreferitiMat || preferitiTipo !== "cerca") return
+
+    const testo = String(searchMat || "").trim()
+    if (testo.length < 2) {
+      setPreferiti([])
+      setFornitoriRicerca([])
+      setFornitoreRicercaSelezionato("")
+      setCarrelloRicercaApertoId(null)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      void cercaMaterialiUnificata(testo)
+    }, 250)
+
+    return () => clearTimeout(timer)
+  }, [searchMat, preferitiTipo, showPreferitiMat])
+
   async function caricaPreferiti(tipo = preferitiTipo, dataDa = preferitiDataDa, dataA = preferitiDataA) {
     setPreferitiLoading(true)
 
     try {
-      if (tipo === "descrizione") {
+      if (tipo === "descrizione" || tipo === "cerca") {
         const data = await leggiTuttiPreferiti()
         setPreferitiDescrizione(data || [])
+        if (tipo === "cerca") setPreferiti([])
         return
       }
 
@@ -1316,23 +1474,24 @@ export default function InterventiPage() {
 
 
   function preferitiDescrizioneFiltrati() {
-    const filtri = [descFiltro1, descFiltro2, descFiltro3, descFiltro4]
-      .map((v) => String(v || "").trim().toLowerCase())
-      .filter(Boolean)
+    const filtri = preferitiTipo === "cerca"
+      ? String(searchMat || "")
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean)
+      : [descFiltro1, descFiltro2, descFiltro3, descFiltro4]
+          .map((v) => String(v || "").trim().toLowerCase())
+          .filter(Boolean)
 
-    // Senza filtri mostro tutti i preferiti.
-    if (filtri.length === 0) {
-      return preferitiDescrizione
-    }
+    if (preferitiTipo === "cerca" && filtri.length === 0) return []
+    if (filtri.length === 0) return preferitiDescrizione
 
     return preferitiDescrizione.filter((p) => {
       const haystack = `${p.codice || ""} ${p.descrizione || ""}`
         .toLowerCase()
         .replace(/[-_/.,;:]+/g, " ")
 
-      // Ogni casella è indipendente e può contenere codice,
-      // parte del codice, parola o numero della descrizione.
-      // L'ordine non conta: devono semplicemente essere presenti tutti.
       return filtri.every((filtro) => haystack.includes(filtro))
     })
   }
@@ -1340,8 +1499,10 @@ export default function InterventiPage() {
   function cambiaTipoPreferiti(tipo) {
     setPreferitiTipo(tipo)
     setSearchMat("")
+    setMaterialiSelezionati([])
+    setPreferiti([])
 
-    if (tipo === "descrizione") {
+    if (tipo === "descrizione" || tipo === "cerca") {
       setDescFiltro1("")
       setDescFiltro2("")
       setDescFiltro3("")
@@ -1369,7 +1530,7 @@ export default function InterventiPage() {
     setPreferitiDataDa(da)
     setPreferitiDataA(a)
 
-    if (preferitiTipo !== "descrizione") {
+    if (preferitiTipo === "bolle" || preferitiTipo === "carrelli") {
       void caricaPreferiti(preferitiTipo, da, a)
     }
   }
@@ -1430,10 +1591,16 @@ export default function InterventiPage() {
       .filter((m) => m.codice || m.descrizione)
       .map((m) => ({
         ...m,
-        quantita: Number(m.quantita || 1) > 0 ? Number(m.quantita || 1) : 1,
+        quantita: m.quantita,
       }))
 
     if (!scelti.length) return
+
+    const quantitaNonValide = scelti.filter((m) => !(Number(m.quantita) > 0))
+    if (quantitaNonValide.length > 0) {
+      alert("Inserisci una quantità maggiore di 0 per tutti i materiali selezionati.")
+      return
+    }
 
     setInserendoMateriali(true)
 
@@ -1447,6 +1614,10 @@ export default function InterventiPage() {
 
       const esistenti = esistentiDb || []
 
+      let inseritiCount = 0
+      let duplicatiCount = 0
+      const nuoviInseriti = []
+
       for (const m of scelti) {
         const codiceNorm = String(m.codice || "").trim().toLowerCase()
         const descrNorm = String(m.descrizione || "").trim().toLowerCase()
@@ -1458,55 +1629,70 @@ export default function InterventiPage() {
         )
 
         if (trovato?.id) {
-          const nuovaQuantita =
-            Number(trovato.quantita || 0) + Number(m.quantita || 1)
+          duplicatiCount += 1
+          continue
+        }
 
-          const { error } = await supabase
-            .from("materiali_bollettino")
-            .update({ quantita: nuovaQuantita })
-            .eq("id", trovato.id)
+        const { data: inserito, error } = await supabase
+          .from("materiali_bollettino")
+          .insert({
+            intervento_id: editingId,
+            codice: m.codice || "",
+            descrizione: m.descrizione || "",
+            quantita: Number(m.quantita),
+          })
+          .select("id, codice, descrizione, quantita")
+          .single()
 
-          if (error) throw error
-
-          trovato.quantita = nuovaQuantita
-        } else {
-          const { data: inserito, error } = await supabase
-            .from("materiali_bollettino")
-            .insert({
-              intervento_id: editingId,
-              codice: m.codice || "",
-              descrizione: m.descrizione || "",
-              quantita: Number(m.quantita || 1),
-            })
-            .select("id, codice, descrizione, quantita")
-            .single()
-
-          if (error) throw error
-          if (inserito) esistenti.push(inserito)
+        if (error) throw error
+        if (inserito) {
+          esistenti.push(inserito)
+          nuoviInseriti.push({
+            id: inserito.id,
+            codice: inserito.codice || "",
+            descrizione: inserito.descrizione || "",
+            quantita: inserito.quantita ?? Number(m.quantita),
+          })
+          inseritiCount += 1
         }
       }
 
-      // Aggiorna subito anche la lista visibile nell'intervento.
-      const { data: aggiornati, error: reloadError } = await supabase
-        .from("materiali_bollettino")
-        .select("id, codice, descrizione, quantita")
-        .eq("intervento_id", editingId)
-        .order("id", { ascending: true })
-
-      if (reloadError) throw reloadError
-
-      setForm((prev) => ({
-        ...prev,
-        materiali: (aggiornati || []).map((m) => ({
-          id: m.id,
-          codice: m.codice || "",
-          descrizione: m.descrizione || "",
-          quantita: m.quantita ?? 1,
-        })),
-      }))
+      // IMPORTANTE: non ricaricare e riordinare tutta la lista.
+      // I nuovi materiali vengono accodati ESATTAMENTE in fondo,
+      // nello stesso ordine con cui sono stati selezionati/inseriti.
+      if (nuoviInseriti.length > 0) {
+        setForm((prev) => ({
+          ...prev,
+          materiali: [...prev.materiali, ...nuoviInseriti],
+        }))
+      }
 
       setMaterialiSelezionati([])
-      alert(`✅ Inseriti ${scelti.length} materiali nell'intervento`)
+      setShowPreferitiMat(false)
+      setShowAltroMat(false)
+      setCarrelloRicercaApertoId(null)
+      setFornitoriRicerca([])
+      setFornitoreRicercaSelezionato("")
+
+      if (preferitiTipo === "cerca") {
+        setSearchMat("")
+        setPreferiti([])
+      }
+
+      // Mantieni i materiali nell'ordine di inserimento e porta subito
+      // in vista l'ultimo materiale appena aggiunto.
+      setTimeout(() => {
+        ultimoMaterialeRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        })
+      }, 140)
+
+      if (duplicatiCount > 0) {
+        alert(`✅ Inseriti ${inseritiCount} materiali. ${duplicatiCount} già presenti non sono stati reinseriti.`)
+      } else {
+        alert(`✅ Inseriti ${inseritiCount} materiali nell'intervento`)
+      }
     } catch (err) {
       console.error(err)
       alert("Errore inserimento materiali: " + (err?.message || err))
@@ -1529,14 +1715,7 @@ export default function InterventiPage() {
       )
 
       if (esistente >= 0) {
-        return {
-          ...prev,
-          materiali: prev.materiali.map((m, i) =>
-            i === esistente
-              ? { ...m, quantita: Number(m.quantita || 0) + 1 }
-              : m
-          ),
-        }
+        return prev
       }
 
       return {
@@ -1999,8 +2178,8 @@ export default function InterventiPage() {
   }
 
   function aggiungiMaterialeManuale() {
-    const codice = altroMat.codice.trim()
-    const descrizione = altroMat.descrizione.trim()
+    const codice = altroMat.codice.trim().toUpperCase()
+    const descrizione = altroMat.descrizione.trim().toUpperCase()
     const quantita = Number(altroMat.quantita || 1)
 
     if (!codice && !descrizione) {
@@ -2038,6 +2217,14 @@ export default function InterventiPage() {
     })
 
     setShowAltroMat(false)
+
+    // Anche per il materiale libero: resta in fondo alla lista e viene mostrato subito.
+    setTimeout(() => {
+      ultimoMaterialeRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      })
+    }, 140)
   }
 
   function aggiungiOperatore(focusNuovo = false) {
@@ -2301,6 +2488,9 @@ export default function InterventiPage() {
     setShowPreferitiMat(true)
     setSearchMat("")
     setMaterialiSelezionati([])
+    setFornitoriRicerca([])
+    setFornitoreRicercaSelezionato("")
+    setCarrelloRicercaApertoId(null)
     setPreferitiTipo("bolle")
 
     const da = dayjs().subtract(2, "day").format("YYYY-MM-DD")
@@ -2324,6 +2514,21 @@ export default function InterventiPage() {
 
     if (!form.descrizione.trim()) {
       alert("Descrizione mancante")
+      return
+    }
+
+    const materialiConQuantitaNonValida = form.materiali.filter((m) => {
+      const haMateriale = String(m.codice || "").trim() || String(m.descrizione || "").trim()
+      if (!haMateriale) return false
+      if (String(m.codice || "").trim().toUpperCase() === "BOLLA") return false
+      return !(Number(m.quantita) > 0)
+    })
+
+    if (materialiConQuantitaNonValida.length > 0) {
+      alert("⚠️ Non posso salvare: uno o più materiali hanno quantità 0 o vuota. Inserisci la quantità prima di salvare.")
+      setTimeout(() => {
+        materialiSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      }, 50)
       return
     }
 
@@ -2406,9 +2611,7 @@ export default function InterventiPage() {
           quantita:
             m.codice === "BOLLA"
               ? 0
-              : Number(m.quantita || 1) > 0
-                ? Number(m.quantita || 1)
-                : 1,
+              : Number(m.quantita),
         }))
 
       if (mats.length) {
@@ -2513,7 +2716,7 @@ export default function InterventiPage() {
                 onChange={(e) => {
                   setForm({
                     ...form,
-                    cliente_nome: e.target.value,
+                    cliente_nome: e.target.value.toUpperCase(),
                     cliente_id: "",
                     cantiere_id: "",
                   })
@@ -2650,7 +2853,7 @@ export default function InterventiPage() {
               placeholder="Descrizione"
               value={form.descrizione}
               onChange={(e) =>
-                setForm({ ...form, descrizione: e.target.value })
+                setForm({ ...form, descrizione: e.target.value.toUpperCase() })
               }
               onPointerDown={passaAScrittura}
               style={descriptionInput}
@@ -2668,7 +2871,7 @@ export default function InterventiPage() {
                     ref={(el) => (operatoreInputRefs.current[i] = el)}
                     placeholder="Cerca operatore..."
                     value={operatoriRicerca[i] ?? nomeOperatoreDaId(op.operatore_id)}
-                    onChange={(e) => aggiornaRicercaOperatore(i, e.target.value)}
+                    onChange={(e) => aggiornaRicercaOperatore(i, e.target.value.toUpperCase())}
                     onFocus={() => {
                       setShowOperatori((prev) => {
                         const nuovo = [...prev]
@@ -2826,7 +3029,7 @@ export default function InterventiPage() {
                     ✏️ Materiale libero
                   </button>
                   <button type="button" onClick={vaiAPreferiti} style={materialeSceltaButton}>
-                    ⭐ Preferiti
+                    🔎 Cerca materiali
                   </button>
                 </div>
               </div>
@@ -2836,9 +3039,9 @@ export default function InterventiPage() {
               <div style={preferitiMaterialiBox}>
                 <div style={preferitiMaterialiHeader}>
                   <div>
-                    <b>⭐ Preferiti</b>
+                    <b>📦 Inserisci materiali</b>
                     <div style={preferitiMaterialiSub}>
-                      Scegli Bolle, Carrelli oppure cerca direttamente per descrizione.
+                      Bolle resta separato. In Cerca materiali trovi insieme Preferiti e Carrelli.
                     </div>
                   </div>
                   <button
@@ -2865,26 +3068,14 @@ export default function InterventiPage() {
 
                   <button
                     type="button"
-                    onClick={() => cambiaTipoPreferiti("carrelli")}
+                    onClick={() => cambiaTipoPreferiti("cerca")}
                     style={
-                      preferitiTipo === "carrelli"
+                      preferitiTipo === "cerca"
                         ? preferitiTipoButtonAttivo
                         : preferitiTipoButton
                     }
                   >
-                    🛒 Carrelli
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => cambiaTipoPreferiti("descrizione")}
-                    style={
-                      preferitiTipo === "descrizione"
-                        ? preferitiTipoButtonAttivo
-                        : preferitiTipoButton
-                    }
-                  >
-                    🔎 Descrizione
+                    🔎 Cerca materiali
                   </button>
                 </div>
 
@@ -2906,21 +3097,21 @@ export default function InterventiPage() {
 
                           <input
                             type="number"
-                            min="1"
+                            min="0"
+                            step="1"
+                            inputMode="numeric"
+                            enterKeyHint="done"
                             value={m.quantita}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) =>
-                              cambiaQuantitaSelezionato(m.key, e.target.value)
-                            }
-                            style={quantitaSelezionatoInput}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onClick={(e) => e.currentTarget.select()}
+                            onChange={(e) => cambiaQuantitaSelezionato(m.key, e.target.value)}
+                            style={isMobile ? quantitaSelezionatoInputMobile : quantitaSelezionatoInput}
                           />
 
                           <button
                             type="button"
                             onClick={() =>
-                              setMaterialiSelezionati((prev) =>
-                                prev.filter((x) => x.key !== m.key)
-                              )
+                              setMaterialiSelezionati((prev) => prev.filter((x) => x.key !== m.key))
                             }
                             style={dangerSmall}
                           >
@@ -2943,404 +3134,435 @@ export default function InterventiPage() {
                   </div>
                 )}
 
-                {preferitiTipo !== "descrizione" && (
-                  <div style={preferitiDateBox}>
-                    <div style={preferitiDateIntro}>
-                      Mostro automaticamente gli ultimi 3 giorni.
+                {preferitiTipo === "bolle" && (
+                  <>
+                    <div style={preferitiDateBox}>
+                      <div style={preferitiDateIntro}>
+                        Mostro automaticamente gli ultimi 3 giorni.
+                      </div>
+
+                      <label style={preferitiDateLabel}>
+                        Da
+                        <input
+                          type="date"
+                          value={preferitiDataDa}
+                          onChange={(e) => setPreferitiDataDa(e.target.value)}
+                          style={preferitiDateInput}
+                        />
+                      </label>
+
+                      <label style={preferitiDateLabel}>
+                        A
+                        <input
+                          type="date"
+                          value={preferitiDataA}
+                          onChange={(e) => setPreferitiDataA(e.target.value)}
+                          style={preferitiDateInput}
+                        />
+                      </label>
+
+                      <button type="button" onClick={applicaDatePreferiti} style={preferitiDateButton}>
+                        🔍 Cerca date
+                      </button>
+
+                      <button type="button" onClick={ultimiTreGiorniPreferiti} style={preferitiDateButtonLight}>
+                        📅 Ultimi 3 giorni
+                      </button>
                     </div>
 
-                    <label style={preferitiDateLabel}>
-                      Da
+                    <div style={ricercaGlobaleRiga}>
                       <input
-                        type="date"
-                        value={preferitiDataDa}
-                        onChange={(e) => setPreferitiDataDa(e.target.value)}
-                        style={preferitiDateInput}
+                        placeholder="Cerca in TUTTE le bolle..."
+                        value={searchMat}
+                        onChange={(e) => setSearchMat(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            void eseguiRicercaGlobaleFonte()
+                          }
+                        }}
+                        style={{ ...inputFull, flex: 1 }}
                       />
-                    </label>
+                      <button type="button" onClick={eseguiRicercaGlobaleFonte} style={preferitiDateButton}>
+                        🔎 Cerca ovunque
+                      </button>
+                    </div>
 
-                    <label style={preferitiDateLabel}>
-                      A
-                      <input
-                        type="date"
-                        value={preferitiDataA}
-                        onChange={(e) => setPreferitiDataA(e.target.value)}
-                        style={preferitiDateInput}
-                      />
-                    </label>
+                    {preferitiLoading && <div style={emptyBox}>Caricamento bolle...</div>}
 
-                    <button
-                      type="button"
-                      onClick={applicaDatePreferiti}
-                      style={preferitiDateButton}
-                    >
-                      🔍 Cerca date
-                    </button>
+                    {!preferitiLoading && gruppiPreferitiFiltrati().length === 0 && (
+                      <div style={emptyBox}>Nessuna bolla trovata nel periodo selezionato.</div>
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={ultimiTreGiorniPreferiti}
-                      style={preferitiDateButtonLight}
-                    >
-                      📅 Ultimi 3 giorni
-                    </button>
-                  </div>
+                    {!preferitiLoading && gruppiPreferitiFiltrati().map((gruppo) => (
+                      <div key={`${gruppo.tipo}_${gruppo.id}`} style={preferitiFonteGruppo}>
+                        <div style={isMobile ? preferitiFonteHeaderMobile : preferitiFonteHeaderNuovo}>
+                          <div style={preferitiBollaMini}>
+                            <div style={preferitiFonteTitolo}>📄 Bolla / DDT</div>
+                            <div style={preferitiDdtPiccolo}>
+                              {gruppo.numero_ddt ? `DDT ${gruppo.numero_ddt}` : "DDT non indicato"}
+                            </div>
+                            {gruppo.numero_ordine && (
+                              <div style={preferitiOrdinePiccolo}>Ordine {gruppo.numero_ordine}</div>
+                            )}
+                          </div>
+
+                          <div style={preferitiRiferimentoBox}>
+                            <div style={preferitiEtichetta}>🏷️ Riferimento / Descrizione</div>
+                            <div style={preferitiValoreEvidenza}>
+                              {gruppo.descrizione_fonte || "Non indicato"}
+                            </div>
+                          </div>
+
+                          <div style={preferitiMetaBox}>
+                            <div style={preferitiEtichetta}>📅 Data bolla</div>
+                            <div style={preferitiDataValore}>
+                              {gruppo.data ? dayjs(gruppo.data).format("DD/MM/YYYY") : "-"}
+                            </div>
+                            <div style={preferitiMaterialiBadge}>📦 {gruppo.materiali.length} materiali</div>
+                          </div>
+                        </div>
+
+                        <div style={preferitiFonteLista}>
+                          {gruppo.materiali.map((p) => (
+                            <button
+                              type="button"
+                              key={`${gruppo.id}_${p.id}`}
+                              onClick={() => toggleMaterialeSelezionato(p, gruppo.id)}
+                              style={{
+                                ...preferitoMaterialeCardNuovo,
+                                ...(materialeSelezionato(p, gruppo.id) ? preferitoMaterialeSelezionato : {}),
+                              }}
+                            >
+                              <div style={preferitoCheckbox}>
+                                {materialeSelezionato(p, gruppo.id) ? "☑" : "☐"}
+                              </div>
+                              <div style={preferitoMaterialeTesto}>
+                                <div style={preferitoCodice}>{p.codice || "Senza codice"}</div>
+                                <div style={preferitoDescrizione}>{p.descrizione || "Senza descrizione"}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 )}
 
-                {preferitiTipo === "descrizione" ? (
-                  <div style={descrizioneFiltriBox}>
-                    <div style={descrizioneFiltriTitolo}>
-                      🔎 Ricerca progressiva
+                {preferitiTipo === "cerca" && (
+                  <>
+                    <div style={descrizioneFiltriBox}>
+                      <div style={descrizioneFiltriTitolo}>🔎 Cerca contemporaneamente</div>
+                      <div style={descrizioneFiltriSub}>
+                        Scrivi codice, descrizione, nome/promemoria del carrello oppure il fornitore. Esempio: CLIPS o INSET.
+                      </div>
+                      <input
+                        autoFocus
+                        placeholder="Es. CLIPS, WIV 32, manicotto..."
+                        value={searchMat}
+                        onChange={(e) => setSearchMat(e.target.value.toUpperCase())}
+                        style={{ ...inputFull, marginTop: 10 }}
+                      />
                     </div>
-                    <div style={descrizioneFiltriSub}>
-                      Inserisci fino a 4 pezzi di codice, parole o numeri. L'ordine non conta.
-                    </div>
 
-                    <div style={descrizioneFiltriGrid}>
-                      <div style={{ position: "relative" }}>
-                        <input
-                          placeholder="Scelta 1 — codice, descrizione o nome carrello"
-                          value={descFiltro1}
-                          onChange={async (e) => {
-                            const valore = e.target.value
-                            setDescFiltro1(valore)
+                    {String(searchMat || "").trim().length < 2 && (
+                      <div style={emptyBox}>Scrivi almeno 2 caratteri per iniziare la ricerca.</div>
+                    )}
 
-                            if (String(valore).trim().length < 2) {
-                              setSuggerimentiFonti([])
-                              return
-                            }
+                    {String(searchMat || "").trim().length >= 2 && !carrelloRicercaApertoId && !fornitoreRicercaSelezionato && fornitoriRicerca.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: 12,
+                          border: "1px solid #d8dee8",
+                          borderRadius: 10,
+                          padding: 12,
+                          background: "#fff",
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
+                          🏭 Fornitori trovati
+                        </div>
+                        <div style={{ fontSize: 13, color: "#666", marginBottom: 10 }}>
+                          Tocca il fornitore per vedere i suoi carrelli.
+                        </div>
+                        <div style={{ display: "grid", gap: 8 }}>
+                          {fornitoriRicerca.map((nome) => (
+                            <button
+                              type="button"
+                              key={`fornitore_${nome}`}
+                              onClick={() => void apriFornitoreRicerca(nome)}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                border: "1px solid #d8dee8",
+                                background: "#fff",
+                                borderRadius: 9,
+                                padding: "13px 14px",
+                                cursor: "pointer",
+                                fontSize: 17,
+                                fontWeight: 800,
+                              }}
+                            >
+                              🏭 {nome}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-                            const dati = await cercaFontiGlobali(valore, "")
-                            setSuggerimentiFonti(
-                              (dati || []).slice(0, 10).map((f) => ({
-                                ...f,
-                                label:
-                                  f.tipo === "carrello"
-                                    ? `🛒 ${f.nome_carrello || f.nome || f.descrizione_ricerca || "Carrello"}`
-                                    : `📄 ${f.numero_ddt ? `DDT ${f.numero_ddt}` : f.nome || "Bolla"}${f.creatore_carrello ? ` · ${f.creatore_carrello}` : ""}`,
-                                valore:
-                                  f.nome_carrello ||
-                                  f.descrizione_ricerca ||
-                                  f.numero_ddt ||
-                                  f.nome ||
-                                  "",
-                              }))
+                    {String(searchMat || "").trim().length >= 2 && !carrelloRicercaApertoId && !fornitoreRicercaSelezionato && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)",
+                          gap: 14,
+                          alignItems: "start",
+                          marginTop: 12,
+                        }}
+                      >
+                        <div style={{ border: "1px solid #d8dee8", borderRadius: 10, padding: 12, background: "#fff" }}>
+                          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 10 }}>
+                            ⭐ Preferiti ({preferitiDescrizioneFiltrati().length})
+                          </div>
+
+                          {preferitiDescrizioneFiltrati().length === 0 ? (
+                            <div style={emptyBox}>Nessun Preferito trovato.</div>
+                          ) : (
+                            <div style={preferitiFonteLista}>
+                              {preferitiDescrizioneFiltrati().slice(0, 100).map((p) => (
+                                <button
+                                  type="button"
+                                  key={`cerca_pref_${p.id || p.codice || p.descrizione}`}
+                                  onClick={() => toggleMaterialeSelezionato(p, "preferito")}
+                                  style={{
+                                    ...preferitoMaterialeCardNuovo,
+                                    ...(materialeSelezionato(p, "preferito") ? preferitoMaterialeSelezionato : {}),
+                                  }}
+                                >
+                                  <div style={preferitoCheckbox}>
+                                    {materialeSelezionato(p, "preferito") ? "☑" : "☐"}
+                                  </div>
+                                  <div style={preferitoMaterialeTesto}>
+                                    <div style={preferitoCodice}>{p.codice || "Senza codice"}</div>
+                                    <div style={preferitoDescrizione}>{p.descrizione || "Senza descrizione"}</div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ border: "1px solid #d8dee8", borderRadius: 10, padding: 12, background: "#fff" }}>
+                          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 10 }}>
+                            🛒 Carrelli ({preferiti.length})
+                          </div>
+
+                          {preferitiLoading && <div style={emptyBox}>Ricerca nei carrelli...</div>}
+
+                          {!preferitiLoading && preferiti.length === 0 ? (
+                            <div style={emptyBox}>Nessun carrello trovato.</div>
+                          ) : (
+                            !preferitiLoading && (
+                              <div style={{ display: "grid", gap: 8 }}>
+                                {preferiti.map((gruppo) => (
+                                  <button
+                                    type="button"
+                                    key={`cerca_carrello_nome_${gruppo.id}`}
+                                    onClick={() => setCarrelloRicercaApertoId(gruppo.id)}
+                                    style={{
+                                      width: "100%",
+                                      textAlign: "left",
+                                      border: "1px solid #d8dee8",
+                                      background: "#fff",
+                                      borderRadius: 9,
+                                      padding: "12px 14px",
+                                      cursor: "pointer",
+                                      fontSize: 16,
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 800 }}>🛒 {gruppo.nome_carrello || "Carrello"}</div>
+                                    {gruppo.fornitore && (
+                                      <div style={{ marginTop: 3, fontSize: 13, color: "#666" }}>
+                                        🏭 {gruppo.fornitore}
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
                             )
-                          }}
-                          style={inputFull}
-                        />
+                          )}
+                        </div>
+                      </div>
+                    )}
 
-                        {suggerimentiFonti.length > 0 && (
-                          <div style={suggerimentiDropdown}>
-                            {suggerimentiFonti.map((s) => (
+                    {String(searchMat || "").trim().length >= 2 && fornitoreRicercaSelezionato && !carrelloRicercaApertoId && (
+                      <div
+                        style={{
+                          width: "100%",
+                          marginTop: 12,
+                          border: "1px solid #d8dee8",
+                          borderRadius: 10,
+                          padding: 12,
+                          background: "#fff",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 10,
+                            flexWrap: "wrap",
+                            marginBottom: 12,
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: 20 }}>
+                              🏭 {fornitoreRicercaSelezionato}
+                            </div>
+                            <div style={{ marginTop: 3, fontSize: 13, color: "#666" }}>
+                              Scegli il carrello da consultare.
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFornitoreRicercaSelezionato("")
+                              void cercaMaterialiUnificata(searchMat)
+                            }}
+                            style={secondaryButton}
+                          >
+                            ⬅ Torna alla ricerca
+                          </button>
+                        </div>
+
+                        {preferitiLoading ? (
+                          <div style={emptyBox}>Caricamento carrelli...</div>
+                        ) : preferiti.length === 0 ? (
+                          <div style={emptyBox}>Nessun carrello trovato per questo fornitore.</div>
+                        ) : (
+                          <div style={{ display: "grid", gap: 8 }}>
+                            {preferiti.map((gruppo) => (
                               <button
                                 type="button"
-                                key={s.id}
-                                onClick={() => {
-                                  setDescFiltro1(s.valore)
-                                  void apriFonteEsattaDaSuggerimento(s)
+                                key={`fornitore_carrello_${gruppo.id}`}
+                                onClick={() => setCarrelloRicercaApertoId(gruppo.id)}
+                                style={{
+                                  width: "100%",
+                                  textAlign: "left",
+                                  border: "1px solid #d8dee8",
+                                  background: "#fff",
+                                  borderRadius: 9,
+                                  padding: "13px 14px",
+                                  cursor: "pointer",
+                                  fontSize: 16,
                                 }}
-                                style={suggerimentoRiga}
                               >
-                                {s.label}
+                                <div style={{ fontWeight: 800 }}>🛒 {gruppo.nome_carrello || "Carrello"}</div>
                               </button>
                             ))}
                           </div>
                         )}
                       </div>
-                      <input
-                        placeholder="Scelta 2 — es. 32"
-                        value={descFiltro2}
-                        onChange={(e) => setDescFiltro2(e.target.value)}
-                        style={inputFull}
-                      />
-                      <input
-                        placeholder="Scelta 3 — es. tubo"
-                        value={descFiltro3}
-                        onChange={(e) => setDescFiltro3(e.target.value)}
-                        style={inputFull}
-                      />
-                      <input
-                        placeholder="Scelta 4 — opzionale"
-                        value={descFiltro4}
-                        onChange={(e) => setDescFiltro4(e.target.value)}
-                        style={inputFull}
-                      />
-                    </div>
-
-                    <div style={descrizioneFiltriAzioni}>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDescFiltro1("")
-                            setDescFiltro2("")
-                            setDescFiltro3("")
-                            setDescFiltro4("")
-                          }}
-                          style={secondaryButton}
-                        >
-                          🧹 Pulisci ricerca
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={rigeneraPreferitiCompleti}
-                          disabled={rigenerandoPreferiti}
-                          style={{
-                            ...secondaryButton,
-                            background: rigenerandoPreferiti ? "#adb5bd" : "#198754",
-                            color: "white",
-                          }}
-                        >
-                          {rigenerandoPreferiti
-                            ? "Rigenerazione..."
-                            : "🔄 Rigenera tutti i Preferiti"}
-                        </button>
-                      </div>
-
-                      <div style={descrizioneRisultatiCount}>
-                        Risultati: <b>{preferitiDescrizioneFiltrati().length}</b>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div style={ricercaGlobaleRiga}>
-                    <input
-                      placeholder={
-                        preferitiTipo === "carrelli"
-                          ? "Cerca in TUTTI i carrelli..."
-                          : "Cerca in TUTTE le bolle..."
-                      }
-                      value={searchMat}
-                      onChange={(e) => setSearchMat(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault()
-                          void eseguiRicercaGlobaleFonte()
-                        }
-                      }}
-                      style={{ ...inputFull, flex: 1 }}
-                    />
-
-                    <button
-                      type="button"
-                      onClick={eseguiRicercaGlobaleFonte}
-                      style={preferitiDateButton}
-                    >
-                      🔎 Cerca ovunque
-                    </button>
-                  </div>
-
-                  {preferiti.length === 1 && (
-                    <div style={descrizioneFiltriBox}>
-                      <div style={descrizioneFiltriTitolo}>
-                        🔎 Ricerca materiali nel {preferitiTipo === "carrelli" ? "carrello" : "documento"}
-                      </div>
-                      <div style={descrizioneFiltriSub}>
-                        Inserisci fino a 4 parti di codice, parole o numeri. L'ordine non conta.
-                      </div>
-
-                      <div style={descrizioneFiltriGrid}>
-                        <input
-                          placeholder="Scelta 1 — es. WIV"
-                          value={fonteFiltro1}
-                          onChange={(e) => setFonteFiltro1(e.target.value)}
-                          style={inputFull}
-                        />
-                        <input
-                          placeholder="Scelta 2 — es. 32"
-                          value={fonteFiltro2}
-                          onChange={(e) => setFonteFiltro2(e.target.value)}
-                          style={inputFull}
-                        />
-                        <input
-                          placeholder="Scelta 3 — es. tubo"
-                          value={fonteFiltro3}
-                          onChange={(e) => setFonteFiltro3(e.target.value)}
-                          style={inputFull}
-                        />
-                        <input
-                          placeholder="Scelta 4 — opzionale"
-                          value={fonteFiltro4}
-                          onChange={(e) => setFonteFiltro4(e.target.value)}
-                          style={inputFull}
-                        />
-                      </div>
-
-                      <div style={descrizioneFiltriAzioni}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFonteFiltro1("")
-                            setFonteFiltro2("")
-                            setFonteFiltro3("")
-                            setFonteFiltro4("")
-                          }}
-                          style={secondaryButton}
-                        >
-                          🧹 Pulisci ricerca
-                        </button>
-
-                        <div style={descrizioneRisultatiCount}>
-                          Risultati: <b>{gruppiPreferitiFiltrati().reduce((tot, g) => tot + g.materiali.length, 0)}</b>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  </>
-                )}
-
-                {preferitiLoading && (
-                  <div style={emptyBox}>
-                    Caricamento {preferitiTipo === "carrelli" ? "carrelli" : preferitiTipo === "descrizione" ? "preferiti" : "bolle"}...
-                  </div>
-                )}
-
-                {preferitiTipo === "descrizione" && !preferitiLoading && (
-                  <>
-                    {preferitiDescrizioneFiltrati().length === 0 && (
-                      <div style={emptyBox}>Nessun materiale trovato.</div>
                     )}
 
-                    <div style={preferitiFonteLista}>
-                      {preferitiDescrizioneFiltrati().map((p) => (
-                        <button
-                          type="button"
-                          key={`descr_${p.id || p.codice || p.descrizione}`}
-                          onClick={() => toggleMaterialeSelezionato(p, "descrizione")}
+                    {String(searchMat || "").trim().length >= 2 && carrelloRicercaApertoId && (() => {
+                      const gruppo = preferiti.find(
+                        (g) => String(g.id) === String(carrelloRicercaApertoId)
+                      )
+
+                      if (!gruppo) {
+                        return (
+                          <div style={{ marginTop: 12 }}>
+                            <button
+                              type="button"
+                              onClick={() => setCarrelloRicercaApertoId(null)}
+                              style={secondaryButton}
+                            >
+                              {fornitoreRicercaSelezionato ? "⬅ Torna ai carrelli" : "⬅ Torna ai risultati"}
+                            </button>
+                            <div style={emptyBox}>Carrello non disponibile.</div>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div
                           style={{
-                            ...preferitoMaterialeCardNuovo,
-                            ...(materialeSelezionato(p, "descrizione")
-                              ? preferitoMaterialeSelezionato
-                              : {}),
+                            width: "100%",
+                            marginTop: 12,
+                            border: "1px solid #d8dee8",
+                            borderRadius: 10,
+                            padding: 12,
+                            background: "#fff",
+                            boxSizing: "border-box",
                           }}
                         >
-                          <div style={preferitoCheckbox}>
-                            {materialeSelezionato(p, "descrizione") ? "☑" : "☐"}
-                          </div>
-                          <div style={preferitoMaterialeTesto}>
-                            <div style={preferitoCodice}>
-                              {p.codice || "Senza codice"}
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 10,
+                              flexWrap: "wrap",
+                              marginBottom: 12,
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 800, fontSize: 20 }}>
+                                🛒 {gruppo.nome_carrello || "Carrello"}
+                              </div>
+                              {gruppo.fornitore && (
+                                <div style={{ marginTop: 3, fontSize: 13, color: "#666" }}>
+                                  🏭 {gruppo.fornitore}
+                                </div>
+                              )}
                             </div>
-                            <div style={preferitoDescrizione}>
-                              {p.descrizione || "Senza descrizione"}
-                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setCarrelloRicercaApertoId(null)}
+                              style={secondaryButton}
+                            >
+                              {fornitoreRicercaSelezionato ? "⬅ Torna ai carrelli" : "⬅ Torna ai risultati"}
+                            </button>
                           </div>
-                        </button>
-                      ))}
-                    </div>
+
+                          <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                            📦 Materiali del carrello
+                          </div>
+
+                          <div style={preferitiFonteLista}>
+                            {gruppo.materiali.map((p) => (
+                              <button
+                                type="button"
+                                key={`cerca_${gruppo.id}_${p.id}`}
+                                onClick={() =>
+                                  toggleMaterialeSelezionato(p, `carrello_${gruppo.id}`)
+                                }
+                                style={{
+                                  ...preferitoMaterialeCardNuovo,
+                                  ...(materialeSelezionato(p, `carrello_${gruppo.id}`)
+                                    ? preferitoMaterialeSelezionato
+                                    : {}),
+                                }}
+                              >
+                                <div style={preferitoCheckbox}>
+                                  {materialeSelezionato(p, `carrello_${gruppo.id}`) ? "☑" : "☐"}
+                                </div>
+                                <div style={preferitoMaterialeTesto}>
+                                  <div style={preferitoCodice}>{p.codice || "Senza codice"}</div>
+                                  <div style={preferitoDescrizione}>{p.descrizione || "Senza descrizione"}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </>
                 )}
-
-                {preferitiTipo !== "descrizione" && !preferitiLoading && gruppiPreferitiFiltrati().length === 0 && (
-                  <div style={emptyBox}>
-                    Nessun {preferitiTipo === "carrelli" ? "carrello" : "bolla"} trovato nel periodo selezionato.
-                  </div>
-                )}
-
-                {preferitiTipo !== "descrizione" && !preferitiLoading && gruppiPreferitiFiltrati().map((gruppo) => (
-                  <div key={`${gruppo.tipo}_${gruppo.id}`} style={preferitiFonteGruppo}>
-                    <div
-                      style={
-                        isMobile
-                          ? preferitiFonteHeaderMobile
-                          : preferitiFonteHeaderNuovo
-                      }
-                    >
-                      <div style={preferitiBollaMini}>
-                        <div style={preferitiFonteTitolo}>
-                          {gruppo.tipo === "carrello" ? "🛒 Carrello" : "📄 Bolla / DDT"}
-                        </div>
-
-                        {gruppo.tipo === "carrello" ? (
-                          <>
-                            <div style={preferitiDdtPiccolo}>
-                              {gruppo.nome_carrello || "Carrello senza nome"}
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div style={preferitiDdtPiccolo}>
-                              {gruppo.numero_ddt
-                                ? `DDT ${gruppo.numero_ddt}`
-                                : "DDT non indicato"}
-                            </div>
-                            {gruppo.numero_ordine && (
-                              <div style={preferitiOrdinePiccolo}>
-                                Ordine {gruppo.numero_ordine}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-
-                      <div style={preferitiCreatoreBox}>
-                        <div style={preferitiEtichetta}>👤 Creatore</div>
-                        <div style={preferitiValoreEvidenza}>
-                          {gruppo.creatore || "Non indicato"}
-                        </div>
-                      </div>
-
-                      <div style={preferitiRiferimentoBox}>
-                        <div style={preferitiEtichetta}>
-                          🏷️ {gruppo.tipo === "carrello" ? "Descrizione / Ricerca" : "Riferimento / Descrizione"}
-                        </div>
-                        <div style={preferitiValoreEvidenza}>
-                          {gruppo.descrizione_fonte || gruppo.nome_carrello || "Non indicato"}
-                        </div>
-                      </div>
-
-                      <div style={preferitiMetaBox}>
-                        <div style={preferitiEtichetta}>
-                          📅 {gruppo.tipo === "carrello" ? "Data carrello" : "Data bolla"}
-                        </div>
-                        <div style={preferitiDataValore}>
-                          {gruppo.data
-                            ? dayjs(gruppo.data).format("DD/MM/YYYY")
-                            : "-"}
-                        </div>
-                        <div style={preferitiMaterialiBadge}>
-                          📦 {gruppo.materiali.length} materiali
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={preferitiFonteLista}>
-                      {gruppo.materiali.map((p) => (
-                        <button
-                          type="button"
-                          key={`${gruppo.id}_${p.id}`}
-                          onClick={() => toggleMaterialeSelezionato(p, gruppo.id)}
-                          style={{
-                            ...preferitoMaterialeCardNuovo,
-                            ...(materialeSelezionato(p, gruppo.id)
-                              ? preferitoMaterialeSelezionato
-                              : {}),
-                          }}
-                        >
-                          <div style={preferitoCheckbox}>
-                            {materialeSelezionato(p, gruppo.id) ? "☑" : "☐"}
-                          </div>
-
-                          <div style={preferitoMaterialeTesto}>
-                            <div style={preferitoCodice}>
-                              {p.codice || "Senza codice"}
-                            </div>
-                            <div style={preferitoDescrizione}>
-                              {p.descrizione || "Senza descrizione"}
-                            </div>
-                          </div>
-
-                          <div style={preferitoQuantitaDestra}>
-                            {p.quantita ? `Fonte: ${p.quantita}` : ""}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
 
@@ -3350,7 +3572,7 @@ export default function InterventiPage() {
                   placeholder="Codice"
                   value={altroMat.codice}
                   onChange={(e) =>
-                    setAltroMat((prev) => ({ ...prev, codice: e.target.value }))
+                    setAltroMat((prev) => ({ ...prev, codice: e.target.value.toUpperCase() }))
                   }
                   style={isMobile ? inputFull : { ...inputFull, minWidth: 120 }}
                 />
@@ -3361,7 +3583,7 @@ export default function InterventiPage() {
                   onChange={(e) =>
                     setAltroMat((prev) => ({
                       ...prev,
-                      descrizione: e.target.value,
+                      descrizione: e.target.value.toUpperCase(),
                     }))
                   }
                   style={isMobile ? inputFull : { ...inputFull, minWidth: 260, flex: 1 }}
@@ -3394,7 +3616,11 @@ export default function InterventiPage() {
             {form.materiali.map((m, i) => {
               if (m.codice === "BOLLA") {
                 return (
-                  <div key={i} style={isMobile ? bollaBoxMobile : bollaBox}>
+                  <div
+                    key={i}
+                    ref={i === form.materiali.length - 1 ? ultimoMaterialeRef : null}
+                    style={isMobile ? bollaBoxMobile : bollaBox}
+                  >
                     <div>{m.descrizione}</div>
 
                     <button
@@ -3409,7 +3635,11 @@ export default function InterventiPage() {
               }
 
               return (
-                <div key={i} style={isMobile ? materialCardMobile : materialRow}>
+                <div
+                  key={i}
+                  ref={i === form.materiali.length - 1 ? ultimoMaterialeRef : null}
+                  style={isMobile ? materialCardMobile : materialRow}
+                >
                   <div style={isMobile ? materialCardTestoMobile : { flex: 1 }}>
                     {isMobile ? (
                       <>
@@ -3425,13 +3655,14 @@ export default function InterventiPage() {
                     {isMobile && <span style={materialQtaLabelMobile}>Q.tà</span>}
                     <input
                       type="number"
-                      min="1"
+                      min="0"
+                      step="1"
+                      inputMode="numeric"
+                      enterKeyHint="done"
                       value={m.quantita}
                       onFocus={(e) => e.currentTarget.select()}
+                      onClick={(e) => e.currentTarget.select()}
                       onChange={(e) => aggiornaQuantitaMateriale(i, e.target.value)}
-                      onBlur={(e) => {
-                        if (!(Number(e.target.value) > 0)) aggiornaQuantitaMateriale(i, "1")
-                      }}
                       style={isMobile ? materialQtaInputMobile : { ...inputFull, width: 70, marginBottom: 0 }}
                     />
 
@@ -3887,14 +4118,16 @@ const materialQtaLabelMobile = {
 }
 
 const materialQtaInputMobile = {
-  width: "84px",
-  minHeight: 42,
+  width: "92px",
+  minHeight: 48,
   boxSizing: "border-box",
   padding: "8px 10px",
-  border: "1px solid #b8c2cc",
-  borderRadius: 8,
-  fontSize: 16,
+  border: "2px solid #98a6b8",
+  borderRadius: 9,
+  fontSize: 20,
+  fontWeight: 900,
   textAlign: "center",
+  background: "#fff",
 }
 
 const preferitiMaterialiBox = {
@@ -4394,6 +4627,19 @@ const quantitaSelezionatoInput = {
   borderRadius: 7,
   textAlign: "center",
   fontWeight: 700,
+}
+
+const quantitaSelezionatoInputMobile = {
+  width: 92,
+  minHeight: 48,
+  boxSizing: "border-box",
+  padding: "8px 10px",
+  border: "2px solid #98a6b8",
+  borderRadius: 9,
+  textAlign: "center",
+  fontWeight: 900,
+  fontSize: 20,
+  background: "#fff",
 }
 
 const inserisciSelezionatiButton = {

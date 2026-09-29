@@ -71,6 +71,7 @@ export default function CarrelliPage() {
   const [ricercaEseguita, setRicercaEseguita] = useState(false)
   const [focusSuggerimenti, setFocusSuggerimenti] = useState(null)
   const [indiceSuggerimentoNome, setIndiceSuggerimentoNome] = useState(-1)
+  const [indiceSuggerimentoFornitore, setIndiceSuggerimentoFornitore] = useState(-1)
   const [indiceSuggerimentoPromemoria, setIndiceSuggerimentoPromemoria] = useState(-1)
 
   // ===== RICERCA VELOCE NEI PREFERITI =====
@@ -380,6 +381,40 @@ export default function CarrelliPage() {
 
       alert(`✅ ${carrelliSelezionatiInsieme.length} carrello/i spostati in ${insiemeDestinazione}`)
       setCarrelliSelezionatiInsieme([])
+    } finally {
+      setSalvandoInsieme(false)
+    }
+  }
+
+
+  async function rimuoviCarrelloDaInsieme(c) {
+    if (!c?.id) return
+    const nomeCarrello = c.nome || c.nome_carrello || "Carrello"
+    const gruppoAttuale = String(c.insieme_carrello || "").trim()
+    if (!gruppoAttuale) return
+    const conferma = window.confirm(`Vuoi togliere "${nomeCarrello}" dal gruppo "${gruppoAttuale}"?`)
+    if (!conferma) return
+
+    setSalvandoInsieme(true)
+    try {
+      const { error } = await supabase
+        .from("bolle_acquisto")
+        .update({ insieme_carrello: null })
+        .eq("id", c.id)
+
+      if (error) {
+        console.error(error)
+        alert("Errore rimozione dal gruppo: " + error.message)
+        return
+      }
+
+      setCarrelli(prev => prev.map(x =>
+        String(x.id) === String(c.id) ? { ...x, insieme_carrello: null } : x
+      ))
+
+      if (selected && String(selected.id) === String(c.id)) {
+        setSelected(prev => prev ? { ...prev, insieme_carrello: null } : prev)
+      }
     } finally {
       setSalvandoInsieme(false)
     }
@@ -713,11 +748,54 @@ export default function CarrelliPage() {
     }
   }
 
-  function scegliSuggerimentoNome(valore) {
-    setRicercaNomeCarrello(valore)
-    setRicercaInsieme("")
+  async function scegliSuggerimentoNome(valore, mantieniFornitore = false) {
+    const nomeScelto = String(valore || "").trim()
+    const nomeSceltoLower = nomeScelto.toLowerCase()
+
+    const carrelliCompatibili = carrelli.filter(c =>
+      String(c.nome || c.nome_carrello || "").trim().toLowerCase() === nomeSceltoLower
+    )
+
+    const fornitoriCompatibili = Array.from(new Set(
+      carrelliCompatibili
+        .map(c => String(c.insieme_carrello || "").trim())
+        .filter(Boolean)
+    ))
+
+    setRicercaNomeCarrello(nomeScelto)
     setFocusSuggerimenti(null)
     setIndiceSuggerimentoNome(-1)
+    setRicercaEseguita(true)
+    setSelected(null)
+    setRighe([])
+    setRigheSelezionate([])
+    setDescrizioneRicerca("")
+
+    // Se il materiale/carrello esiste presso un solo fornitore,
+    // saltiamo automaticamente la scelta del fornitore.
+    if (!mantieniFornitore && fornitoriCompatibili.length === 1) {
+      const unicoFornitore = fornitoriCompatibili[0]
+      setRicercaInsieme(unicoFornitore)
+
+      const carrelliUnicoFornitore = carrelliCompatibili.filter(c =>
+        String(c.insieme_carrello || "").trim() === unicoFornitore
+      )
+
+      // Se c'è un solo carrello corrispondente, apriamo subito i materiali.
+      if (carrelliUnicoFornitore.length === 1) {
+        await selezionaCarrello(carrelliUnicoFornitore[0])
+      }
+      return
+    }
+
+    if (!mantieniFornitore) setRicercaInsieme("")
+  }
+
+  function scegliSuggerimentoFornitore(valore) {
+    setRicercaInsieme(valore)
+    setRicercaNomeCarrello("")
+    setFocusSuggerimenti(null)
+    setIndiceSuggerimentoFornitore(-1)
     setRicercaEseguita(true)
     setSelected(null)
     setRighe([])
@@ -1953,8 +2031,12 @@ export default function CarrelliPage() {
   })
 
   const carrelliInsiemeSelezionato = insiemeDestinazione
-    ? carrelli.filter(c => c.insieme_carrello === insiemeDestinazione)
+    ? carrelli.filter(c => String(c.insieme_carrello || "").trim() === String(insiemeDestinazione || "").trim())
     : []
+
+  const carrelliNonAssegnati = carrelliFiltrati.filter(c =>
+    !String(c.insieme_carrello || "").trim()
+  )
 
   const nomeCarrelloScelto = ricercaNomeCarrello.trim().toLowerCase()
 
@@ -1984,6 +2066,38 @@ export default function CarrelliPage() {
           .filter(Boolean)
           .filter(nome => nome.toLowerCase().includes(testoSuggerimentoNome))
       )).slice(0, 10)
+    : []
+
+  const testoSuggerimentoFornitore = ricercaInsieme.trim().toLowerCase()
+  const tuttiFornitori = Array.from(new Set(
+    carrelli
+      .map(c => String(c.insieme_carrello || "").trim())
+      .filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, "it"))
+
+  const suggerimentiFornitore = testoSuggerimentoFornitore
+    ? tuttiFornitori.filter(nome => nome.toLowerCase().includes(testoSuggerimentoFornitore)).slice(0, 10)
+    : tuttiFornitori.slice(0, 10)
+
+  // Se il testo corrisponde esattamente a un fornitore lo usiamo subito.
+  // Se invece il testo parziale identifica UN SOLO fornitore, lo consideriamo
+  // già sufficiente per mostrare i suoi carrelli (es. INS -> INSET).
+  const fornitoreEsatto = tuttiFornitori.find(
+    nome => nome.toLowerCase() === testoSuggerimentoFornitore
+  ) || ""
+
+  const fornitoreEffettivo = fornitoreEsatto ||
+    (testoSuggerimentoFornitore && suggerimentiFornitore.length === 1
+      ? suggerimentiFornitore[0]
+      : "")
+
+  const carrelliDelFornitore = fornitoreEffettivo
+    ? Array.from(new Set(
+        carrelli
+          .filter(c => String(c.insieme_carrello || "").trim().toLowerCase() === fornitoreEffettivo.toLowerCase())
+          .map(c => String(c.nome || c.nome_carrello || "").trim())
+          .filter(Boolean)
+      )).sort((a, b) => a.localeCompare(b, "it"))
     : []
 
   const righeFiltrate = righe.filter(r => {
@@ -2453,89 +2567,177 @@ export default function CarrelliPage() {
         borderRadius: 10,
         background: "#f8fbff"
       }}>
-        <h3 style={{ marginTop: 0, marginBottom: 6 }}>🔎 Trova materiale / carrello</h3>
+        <h3 style={{ marginTop: 0, marginBottom: 6 }}>🔎 Trova materiali carrello</h3>
         <div style={{ fontSize: 13, color: "#555", marginBottom: 12 }}>
-          Prima scegli quello che ti serve. Poi il gestionale ti mostra automaticamente quali fornitori lo trattano.
+          Puoi partire dalla <b>descrizione/nome carrello</b> oppure dal <b>fornitore</b>. I due percorsi si filtrano automaticamente.
         </div>
 
-        <div style={{ maxWidth: 650, position: "relative" }}>
-          <div style={{ fontSize: 13, fontWeight: "bold", marginBottom: 4 }}>1. Nome carrello / materiale</div>
-          <input
-            value={ricercaNomeCarrello}
-            onFocus={() => setFocusSuggerimenti("nome")}
-            onChange={(e) => {
-              setRicercaNomeCarrello(e.target.value)
-              setRicercaInsieme("")
-              setRicercaEseguita(false)
-              setFocusSuggerimenti("nome")
-              setIndiceSuggerimentoNome(-1)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowDown" && suggerimentiNomeCarrello.length > 0) {
-                e.preventDefault()
-                setIndiceSuggerimentoNome(prev =>
-                  prev < suggerimentiNomeCarrello.length - 1 ? prev + 1 : 0
-                )
-              } else if (e.key === "ArrowUp" && suggerimentiNomeCarrello.length > 0) {
-                e.preventDefault()
-                setIndiceSuggerimentoNome(prev =>
-                  prev > 0 ? prev - 1 : suggerimentiNomeCarrello.length - 1
-                )
-              } else if (e.key === "Enter") {
-                e.preventDefault()
-                if (indiceSuggerimentoNome >= 0 && suggerimentiNomeCarrello[indiceSuggerimentoNome]) {
-                  scegliSuggerimentoNome(suggerimentiNomeCarrello[indiceSuggerimentoNome])
-                } else if (suggerimentiNomeCarrello.length === 1) {
-                  scegliSuggerimentoNome(suggerimentiNomeCarrello[0])
-                }
-              } else if (e.key === "Escape") {
-                setFocusSuggerimenti(null)
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, alignItems: "start" }}>
+          <div style={{ position: "relative" }}>
+            <div style={{ fontSize: 13, fontWeight: "bold", marginBottom: 4 }}>Descrizione / nome carrello</div>
+            <input
+              value={ricercaNomeCarrello}
+              onFocus={() => setFocusSuggerimenti("nome")}
+              onChange={(e) => {
+                setRicercaNomeCarrello(e.target.value)
+                setRicercaInsieme("")
+                setRicercaEseguita(false)
+                setFocusSuggerimenti("nome")
                 setIndiceSuggerimentoNome(-1)
-              }
-            }}
-            placeholder="Es. MANICOTTI STAGNI, CURVA STAGNA..."
-            autoComplete="off"
-            style={{ width: "100%", padding: 10, boxSizing: "border-box", fontSize: 16 }}
-          />
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" && suggerimentiNomeCarrello.length > 0) {
+                  e.preventDefault()
+                  setIndiceSuggerimentoNome(prev => prev < suggerimentiNomeCarrello.length - 1 ? prev + 1 : 0)
+                } else if (e.key === "ArrowUp" && suggerimentiNomeCarrello.length > 0) {
+                  e.preventDefault()
+                  setIndiceSuggerimentoNome(prev => prev > 0 ? prev - 1 : suggerimentiNomeCarrello.length - 1)
+                } else if (e.key === "Enter") {
+                  e.preventDefault()
+                  if (indiceSuggerimentoNome >= 0 && suggerimentiNomeCarrello[indiceSuggerimentoNome]) {
+                    scegliSuggerimentoNome(suggerimentiNomeCarrello[indiceSuggerimentoNome])
+                  } else if (suggerimentiNomeCarrello.length === 1) {
+                    scegliSuggerimentoNome(suggerimentiNomeCarrello[0])
+                  }
+                } else if (e.key === "Escape") {
+                  setFocusSuggerimenti(null)
+                  setIndiceSuggerimentoNome(-1)
+                }
+              }}
+              placeholder="Es. MANICOTTI STAGNI, CURVA STAGNA..."
+              autoComplete="off"
+              style={{ width: "100%", padding: 10, boxSizing: "border-box", fontSize: 16 }}
+            />
 
-          {focusSuggerimenti === "nome" && suggerimentiNomeCarrello.length > 0 && (
-            <div style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              right: 0,
-              zIndex: 30,
-              background: "white",
-              border: "1px solid #bbb",
-              borderTop: "none",
-              borderRadius: "0 0 7px 7px",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              maxHeight: 300,
-              overflowY: "auto"
-            }}>
-              {suggerimentiNomeCarrello.map((nome, index) => (
-                <div
-                  key={`sugg_nome_${nome}`}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => scegliSuggerimentoNome(nome)}
-                  style={{
-                    padding: "10px 12px",
-                    borderBottom: "1px solid #eee",
-                    cursor: "pointer",
-                    background: indiceSuggerimentoNome === index ? "#e7f1ff" : "white"
-                  }}
-                >
-                  🛒 {nome}
-                </div>
-              ))}
-            </div>
-          )}
+            {focusSuggerimenti === "nome" && suggerimentiNomeCarrello.length > 0 && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30, background: "white",
+                border: "1px solid #bbb", borderTop: "none", borderRadius: "0 0 7px 7px",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)", maxHeight: 300, overflowY: "auto"
+              }}>
+                {suggerimentiNomeCarrello.map((nome, index) => (
+                  <div
+                    key={`sugg_nome_${nome}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => scegliSuggerimentoNome(nome)}
+                    style={{
+                      padding: "10px 12px", borderBottom: "1px solid #eee", cursor: "pointer",
+                      background: indiceSuggerimentoNome === index ? "#e7f1ff" : "white"
+                    }}
+                  >
+                    🛒 {nome}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: "relative" }}>
+            <div style={{ fontSize: 13, fontWeight: "bold", marginBottom: 4 }}>Fornitore</div>
+            <input
+              value={ricercaInsieme}
+              onFocus={() => setFocusSuggerimenti("fornitore")}
+              onChange={(e) => {
+                setRicercaInsieme(e.target.value)
+                setRicercaNomeCarrello("")
+                setRicercaEseguita(false)
+                setFocusSuggerimenti("fornitore")
+                setIndiceSuggerimentoFornitore(-1)
+                setSelected(null)
+                setRighe([])
+                setRigheSelezionate([])
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" && suggerimentiFornitore.length > 0) {
+                  e.preventDefault()
+                  setIndiceSuggerimentoFornitore(prev => prev < suggerimentiFornitore.length - 1 ? prev + 1 : 0)
+                } else if (e.key === "ArrowUp" && suggerimentiFornitore.length > 0) {
+                  e.preventDefault()
+                  setIndiceSuggerimentoFornitore(prev => prev > 0 ? prev - 1 : suggerimentiFornitore.length - 1)
+                } else if (e.key === "Enter") {
+                  e.preventDefault()
+                  if (indiceSuggerimentoFornitore >= 0 && suggerimentiFornitore[indiceSuggerimentoFornitore]) {
+                    scegliSuggerimentoFornitore(suggerimentiFornitore[indiceSuggerimentoFornitore])
+                  } else if (suggerimentiFornitore.length === 1) {
+                    scegliSuggerimentoFornitore(suggerimentiFornitore[0])
+                  }
+                } else if (e.key === "Escape") {
+                  setFocusSuggerimenti(null)
+                  setIndiceSuggerimentoFornitore(-1)
+                }
+              }}
+              placeholder="Es. INSET, SONEPAR..."
+              autoComplete="off"
+              style={{ width: "100%", padding: 10, boxSizing: "border-box", fontSize: 16 }}
+            />
+
+            {focusSuggerimenti === "fornitore" && suggerimentiFornitore.length > 0 && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, right: 0, zIndex: 31, background: "white",
+                border: "1px solid #bbb", borderTop: "none", borderRadius: "0 0 7px 7px",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)", maxHeight: 300, overflowY: "auto"
+              }}>
+                {suggerimentiFornitore.map((fornitore, index) => (
+                  <div
+                    key={`sugg_forn_${fornitore}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => scegliSuggerimentoFornitore(fornitore)}
+                    style={{
+                      padding: "10px 12px", borderBottom: "1px solid #eee", cursor: "pointer",
+                      background: indiceSuggerimentoFornitore === index ? "#f1e9ff" : "white"
+                    }}
+                  >
+                    🏪 {fornitore}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
+        {fornitoreEffettivo && !ricercaNomeCarrello.trim() && carrelliDelFornitore.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 0.8fr) minmax(360px, 1.6fr)",
+              gap: 14,
+              alignItems: "start"
+            }}>
+              <div style={{ background: "white", border: "1px solid #ddd", borderRadius: 10, padding: 10 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Fornitore selezionato</div>
+                <div style={{ padding: "12px 14px", border: "2px solid #6f42c1", background: "#eee5ff", borderRadius: 8, fontWeight: 700, fontSize: 17 }}>
+                  🏪 {fornitoreEffettivo}
+                </div>
+              </div>
+
+              <div style={{ background: "white", border: "1px solid #ddd", borderRadius: 10, padding: 10 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Scegli il carrello</div>
+                {carrelliDelFornitore.map(nome => (
+                  <button
+                    key={`carrello_forn_${nome}`}
+                    onClick={() => {
+                      setRicercaInsieme(fornitoreEffettivo)
+                      scegliSuggerimentoNome(nome, true)
+                    }}
+                    style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      padding: isMobile ? "14px 12px" : "11px 12px", marginBottom: 7,
+                      minHeight: isMobile ? 52 : 44, borderRadius: 8,
+                      border: "1px solid #d5d5d5", background: "white", cursor: "pointer",
+                      fontWeight: 650, fontSize: isMobile ? 16 : 15
+                    }}
+                  >
+                    🛒 {nome}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         {ricercaEseguita && ricercaNomeCarrello.trim() && (
           <div style={{ marginTop: 18 }}>
             <div style={{ fontSize: 13, fontWeight: "bold", marginBottom: 8 }}>
-              2. Fornitori che trattano <span style={{ color: "#0d6efd" }}>{ricercaNomeCarrello}</span>
+              Fornitori che trattano <span style={{ color: "#0d6efd" }}>{ricercaNomeCarrello}</span>
             </div>
 
             {fornitoriDisponibili.length === 0 ? (
@@ -2543,7 +2745,11 @@ export default function CarrelliPage() {
                 Nessun fornitore associato a questo carrello. Puoi assegnarlo da “Gestisci insiemi e carrelli”.
               </div>
             ) : (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 8
+              }}>
                 {fornitoriDisponibili.map(fornitore => {
                   const numero = carrelliConNomeScelto.filter(c => c.insieme_carrello === fornitore).length
                   const attivo = ricercaInsieme === fornitore
@@ -2558,13 +2764,13 @@ export default function CarrelliPage() {
                         setRigheSelezionate([])
                       }}
                       style={{
-                        background: attivo ? "#6f42c1" : "white",
-                        color: attivo ? "white" : "#4b2b83",
-                        border: "2px solid #6f42c1",
-                        padding: "10px 14px",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                        fontWeight: "bold"
+                        width: "100%", textAlign: "left",
+                        background: attivo ? "#eee5ff" : "white",
+                        color: "#222",
+                        border: attivo ? "2px solid #6f42c1" : "1px solid #d5d5d5",
+                        padding: isMobile ? "14px 12px" : "11px 12px",
+                        minHeight: isMobile ? 52 : 44, borderRadius: 8, cursor: "pointer",
+                        fontWeight: attivo ? 750 : 650, fontSize: isMobile ? 16 : 15
                       }}
                     >
                       🏪 {fornitore}{numero > 1 ? ` (${numero})` : ""}
@@ -2579,7 +2785,7 @@ export default function CarrelliPage() {
         {ricercaEseguita && ricercaInsieme && (
           <div style={{ marginTop: 18 }}>
             <div style={{ marginBottom: 8, fontWeight: "bold" }}>
-              3. {ricercaNomeCarrello} — fornitore {ricercaInsieme}
+              {ricercaNomeCarrello} — fornitore {ricercaInsieme}
             </div>
 
             {risultatiRicercaCarrelli.map(c => {
@@ -2843,7 +3049,7 @@ export default function CarrelliPage() {
         }}>
           <h3 style={{ marginTop: 0 }}>🗂 Gestione insiemi</h3>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
             <input
               value={nomeNuovoInsieme}
               onChange={(e) => setNomeNuovoInsieme(e.target.value)}
@@ -2856,113 +3062,127 @@ export default function CarrelliPage() {
             </button>
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <select
-              value={insiemeDestinazione}
-              onChange={(e) => setInsiemeDestinazione(e.target.value)}
-              style={isMobile ? { width: "100%", padding: 8, boxSizing: "border-box" } : { minWidth: 260, padding: 8 }}
-            >
-              <option value="">Scegli insieme di destinazione...</option>
-              {insiemiCarrelli.map(i => (
-                <option key={i.id} value={i.nome}>
-                  {i.nome} ({carrelli.filter(c => c.insieme_carrello === i.nome).length})
-                </option>
-              ))}
-            </select>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 0.8fr) minmax(360px, 1.6fr)",
+            gap: 14,
+            alignItems: "start"
+          }}>
+            <div style={{ background: "white", border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Gruppi creati</div>
+              {insiemiCarrelli.length === 0 ? (
+                <div style={{ color: "#666" }}>Nessun gruppo creato.</div>
+              ) : (
+                insiemiCarrelli.map(i => {
+                  const attivo = String(insiemeDestinazione || "") === String(i.nome || "")
+                  const quanti = carrelli.filter(c =>
+                    String(c.insieme_carrello || "").trim() === String(i.nome || "").trim()
+                  ).length
+                  return (
+                    <button
+                      key={i.id}
+                      onClick={() => {
+                        setInsiemeDestinazione(i.nome)
+                        setCarrelliSelezionatiInsieme([])
+                      }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left",
+                        padding: "9px 10px", marginBottom: 6, borderRadius: 6,
+                        border: attivo ? "2px solid #6f42c1" : "1px solid #ddd",
+                        background: attivo ? "#eee5ff" : "white",
+                        cursor: "pointer", fontWeight: attivo ? 700 : 500
+                      }}
+                    >
+                      🗂 {i.nome} <span style={{ color: "#666" }}>({quanti})</span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
 
-            <button
-              onClick={spostaCarrelliNellInsieme}
-              disabled={!insiemeDestinazione || carrelliSelezionatiInsieme.length === 0 || salvandoInsieme}
-            >
-              📦 Sposta selezionati ({carrelliSelezionatiInsieme.length})
-            </button>
+            <div style={{ background: "white", border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+              {!insiemeDestinazione ? (
+                <div style={{ color: "#666" }}>Seleziona un gruppo a sinistra per vedere e modificare i carrelli contenuti.</div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <b>Gruppo: {insiemeDestinazione}</b> — {carrelliInsiemeSelezionato.length} carrello/i
+                    </div>
+                    <button
+                      onClick={rinominaInsiemeSelezionato}
+                      disabled={salvandoInsieme}
+                      style={{ background: "#fd7e14", color: "white", border: "none", padding: "8px 12px", borderRadius: 5 }}
+                    >
+                      ✏️ Rinomina gruppo
+                    </button>
+                  </div>
 
-            <button
-              onClick={rinominaInsiemeSelezionato}
-              disabled={!insiemeDestinazione || salvandoInsieme}
-              style={{
-                background: insiemeDestinazione ? "#fd7e14" : "#ccc",
-                color: insiemeDestinazione ? "white" : "black",
-                border: "none",
-                padding: "8px 12px",
-                borderRadius: 5,
-                cursor: insiemeDestinazione && !salvandoInsieme ? "pointer" : "not-allowed"
-              }}
-            >
-              ✏️ Rinomina insieme
-            </button>
-
-            <button onClick={deselezionaCarrelliInsieme} disabled={carrelliSelezionatiInsieme.length === 0}>
-              ☐ Deseleziona
-            </button>
+                  {carrelliInsiemeSelezionato.length === 0 ? (
+                    <div style={{ color: "#666" }}>Questo gruppo non contiene ancora carrelli.</div>
+                  ) : (
+                    carrelliInsiemeSelezionato.map(c => {
+                      const nomeCarrello = c.nome || c.nome_carrello || "Carrello"
+                      return (
+                        <div key={`gruppo_${c.id}`} style={{ padding: 8, marginTop: 6, border: "1px solid #e1e1e1", borderRadius: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ flex: 1, minWidth: 180 }}>🛒 <b>{nomeCarrello}</b></span>
+                          <button onClick={() => selezionaCarrello(c)}>📦 Apri</button>
+                          <button onClick={() => rimuoviCarrelloDaInsieme(c)} disabled={salvandoInsieme} style={{ color: "#b42318" }}>
+                            ↩️ Togli dal gruppo
+                          </button>
+                        </div>
+                      )
+                    })
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
-          <div style={{ marginBottom: 10 }}>
-            <input
-              placeholder="Filtra carrelli da organizzare per nome"
-              value={searchNome}
-              onChange={(e) => setSearchNome(e.target.value)}
-              style={isMobile ? { width: "100%", padding: 8, boxSizing: "border-box" } : { minWidth: 340, padding: 8 }}
-            />
-          </div>
-
-          <div style={{ marginBottom: 10 }}>
-            Carrelli da organizzare: <b>{carrelliFiltrati.length}</b>
-          </div>
-
-          {carrelliFiltrati.map(c => {
-            const nomeCarrello = c.nome || c.nome_carrello || "Carrello"
-            return (
-              <div
-                key={`gestione_${c.id}`}
-                style={{
-                  padding: 8,
-                  marginTop: 5,
-                  border: "1px solid #ddd",
-                  borderRadius: 6,
-                  background: "white",
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  flexWrap: "wrap"
-                }}
+          <div style={{ marginTop: 16, background: "white", border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Carrelli non assegnati</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <input
+                placeholder="Filtra carrelli non assegnati per nome"
+                value={searchNome}
+                onChange={(e) => setSearchNome(e.target.value)}
+                style={isMobile ? { width: "100%", padding: 8, boxSizing: "border-box" } : { minWidth: 340, padding: 8 }}
+              />
+              <select
+                value={insiemeDestinazione}
+                onChange={(e) => setInsiemeDestinazione(e.target.value)}
+                style={isMobile ? { width: "100%", padding: 8, boxSizing: "border-box" } : { minWidth: 230, padding: 8 }}
               >
-                {!String(c.insieme_carrello || "").trim() && (
-                  <input
-                    type="checkbox"
-                    checked={carrelliSelezionatiInsieme.includes(String(c.id))}
-                    onChange={() => toggleCarrelloPerInsieme(c)}
-                    style={{ width: 22, height: 22 }}
-                  />
-                )}
-                <span style={{ flex: 1 }}>
-                  🛒 <b>{nomeCarrello}</b>
-                  {c.insieme_carrello ? ` — 🗂 ${c.insieme_carrello}` : " — senza insieme"}
-                </span>
-                <button
-                  onClick={() => selezionaCarrello(c)}
-                  style={{
-                    background: "#198754",
-                    color: "white",
-                    border: "none",
-                    padding: "7px 12px",
-                    borderRadius: 5,
-                    cursor: "pointer"
-                  }}
-                >
-                  📦 Apri
-                </button>
-              </div>
-            )
-          })}
+                <option value="">Scegli gruppo...</option>
+                {insiemiCarrelli.map(i => <option key={i.id} value={i.nome}>{i.nome}</option>)}
+              </select>
+              <button onClick={spostaCarrelliNellInsieme} disabled={!insiemeDestinazione || carrelliSelezionatiInsieme.length === 0 || salvandoInsieme}>
+                📦 Inserisci nel gruppo ({carrelliSelezionatiInsieme.length})
+              </button>
+              <button onClick={deselezionaCarrelliInsieme} disabled={carrelliSelezionatiInsieme.length === 0}>☐ Deseleziona</button>
+            </div>
+
+            <div style={{ marginBottom: 8, color: "#555" }}>Da assegnare: <b>{carrelliNonAssegnati.length}</b></div>
+
+            {carrelliNonAssegnati.length === 0 ? (
+              <div style={{ color: "#666" }}>Nessun carrello non assegnato.</div>
+            ) : (
+              carrelliNonAssegnati.map(c => {
+                const nomeCarrello = c.nome || c.nome_carrello || "Carrello"
+                return (
+                  <div key={`non_assegnato_${c.id}`} style={{ padding: 8, marginTop: 5, border: "1px solid #ddd", borderRadius: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <input type="checkbox" checked={carrelliSelezionatiInsieme.includes(String(c.id))} onChange={() => toggleCarrelloPerInsieme(c)} style={{ width: 22, height: 22 }} />
+                    <span style={{ flex: 1, minWidth: 180 }}>🛒 <b>{nomeCarrello}</b></span>
+                    <button onClick={() => selezionaCarrello(c)}>📦 Apri</button>
+                  </div>
+                )
+              })
+            )}
+          </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-            <button onClick={modificaNomeCarrelloSelezionato} disabled={!selected}>
-              ✏️ Modifica nome selezionato
-            </button>
-            <button onClick={eliminaCarrelloSelezionato} disabled={!selected}>
-              🗑 Elimina selezionato
-            </button>
+            <button onClick={modificaNomeCarrelloSelezionato} disabled={!selected}>✏️ Modifica nome selezionato</button>
+            <button onClick={eliminaCarrelloSelezionato} disabled={!selected}>🗑 Elimina selezionato</button>
           </div>
         </div>
       )}

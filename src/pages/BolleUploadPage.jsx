@@ -18,6 +18,7 @@ export default function BolleUploadPage() {
 
   const [filtroOperatore, setFiltroOperatore] = useState("")
   const [ricercaCarrello, setRicercaCarrello] = useState("")
+  const [quantitaImportazione, setQuantitaImportazione] = useState({})
   const [importando, setImportando] = useState(false)
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth <= 768 : false
@@ -132,6 +133,7 @@ export default function BolleUploadPage() {
     if (selected?.id === b.id) {
       setSelected(null)
       setRighe([])
+      setQuantitaImportazione({})
       return
     }
 
@@ -155,7 +157,16 @@ export default function BolleUploadPage() {
       return
     }
 
-    setRighe(data || [])
+    const righeCaricate = data || []
+    setRighe(righeCaricate)
+    setQuantitaImportazione(
+      Object.fromEntries(
+        righeCaricate.map((r, i) => [
+          String(r.id ?? i),
+          Number(r.quantita || 0)
+        ])
+      )
+    )
   }
 
   function convertiData(d) {
@@ -467,14 +478,20 @@ export default function BolleUploadPage() {
           const key = `${String(r.codice || "").trim()}_${String(r.descrizione || "").trim()}`
           return !materialiGiaPresenti.has(key)
         })
-        .map(r => ({
-          intervento_id: interventoFinale,
-          codice: r.codice || "",
-          descrizione: r.descrizione || "",
-          quantita: Number(r.quantita || 1),
-          prezzo: Number(r.prezzo || 0),
-          totale: Number(r.quantita || 1) * Number(r.prezzo || 0)
-        }))
+        .map((r, i) => {
+          const chiaveQta = String(r.id ?? i)
+          const quantitaDaInserire = Number(quantitaImportazione[chiaveQta] ?? r.quantita ?? 0)
+
+          return {
+            intervento_id: interventoFinale,
+            codice: r.codice || "",
+            descrizione: r.descrizione || "",
+            quantita: quantitaDaInserire,
+            prezzo: Number(r.prezzo || 0),
+            totale: quantitaDaInserire * Number(r.prezzo || 0)
+          }
+        })
+        .filter(r => Number(r.quantita) > 0)
 
       if (materialiDaInserire.length === 0) {
         alert("Tutti i materiali di questa bolla risultano già presenti nell’intervento")
@@ -506,6 +523,7 @@ export default function BolleUploadPage() {
 
       setSelected(null)
       setRighe([])
+      setQuantitaImportazione({})
       caricaBolle()
 
     } finally {
@@ -536,7 +554,7 @@ export default function BolleUploadPage() {
   }
 
   const operatori = [...new Set(bolle.map(b => b.creatore_carrello).filter(Boolean))]
-  const carrelli = [...new Set(bolle.map(b => b.nome_carrello).filter(Boolean))]
+  const descrizioniBolle = [...new Set(bolle.map(b => b.nome_carrello).filter(Boolean))]
 
   const bolleFiltrate = bolle
     .filter(b => {
@@ -574,6 +592,7 @@ export default function BolleUploadPage() {
         <button onClick={() => {
           setSelected(null)
           setRighe([])
+          setQuantitaImportazione({})
         }}>
           ❌ Chiudi
         </button>
@@ -716,7 +735,7 @@ export default function BolleUploadPage() {
                     fontSize: 10,
                     color: "#666"
                   }}>
-                    Qta
+                    Qta bolla
                   </div>
 
                   <div style={{
@@ -726,6 +745,37 @@ export default function BolleUploadPage() {
                   }}>
                     {r.quantita || 0}
                   </div>
+
+                  <div style={{
+                    marginTop: 8,
+                    fontSize: 10,
+                    color: "#666"
+                  }}>
+                    Qta da inserire
+                  </div>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={quantitaImportazione[String(r.id ?? i)] ?? ""}
+                    onChange={(e) => {
+                      const valore = e.target.value
+                      setQuantitaImportazione(prev => ({
+                        ...prev,
+                        [String(r.id ?? i)]: valore
+                      }))
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      marginTop: 3,
+                      padding: "6px 4px",
+                      fontSize: 16,
+                      fontWeight: "bold"
+                    }}
+                  />
                 </div>
 
                 <div style={{
@@ -746,15 +796,41 @@ export default function BolleUploadPage() {
                 key={i}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "140px 1fr 80px",
+                  gridTemplateColumns: "140px 1fr 110px 150px",
                   gap: 10,
+                  alignItems: "center",
                   borderBottom: "1px solid #ddd",
                   padding: "6px 0"
                 }}
               >
                 <div>{r.codice || "-"}</div>
                 <div>{r.descrizione || "-"}</div>
-                <div>Qta: {r.quantita || 0}</div>
+                <div>Qta bolla: <b>{r.quantita || 0}</b></div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#666", marginBottom: 3 }}>
+                    Qta da inserire
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={quantitaImportazione[String(r.id ?? i)] ?? ""}
+                    onChange={(e) => {
+                      const valore = e.target.value
+                      setQuantitaImportazione(prev => ({
+                        ...prev,
+                        [String(r.id ?? i)]: valore
+                      }))
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: 6,
+                      fontWeight: "bold"
+                    }}
+                  />
+                </div>
               </div>
             )
           ))}
@@ -858,7 +934,7 @@ export default function BolleUploadPage() {
 
         <div style={{ position: "relative" }}>
           <input
-            placeholder="🔍 Cerca carrello..."
+            placeholder="🔍 Cerca descrizione..."
             value={ricercaCarrello}
             onChange={(e) => setRicercaCarrello(e.target.value)}
             style={isMobile ? { width: "100%", boxSizing: "border-box", padding: 8 } : undefined}
@@ -872,7 +948,7 @@ export default function BolleUploadPage() {
               zIndex: 20,
               minWidth: 220
             }}>
-              {carrelli
+              {descrizioniBolle
                 .filter(c => c.toLowerCase().includes(ricercaCarrello.toLowerCase()))
                 .slice(0, 10)
                 .map((c, i) => (
@@ -885,9 +961,9 @@ export default function BolleUploadPage() {
                   </div>
                 ))}
 
-              {carrelli.filter(c => c.toLowerCase().includes(ricercaCarrello.toLowerCase())).length === 0 && (
+              {descrizioniBolle.filter(c => c.toLowerCase().includes(ricercaCarrello.toLowerCase())).length === 0 && (
                 <div style={{ padding: 6, color: "#777" }}>
-                  Nessun carrello trovato
+                  Nessuna descrizione trovata
                 </div>
               )}
             </div>
@@ -942,7 +1018,7 @@ export default function BolleUploadPage() {
             <b>{b.numero_ordine}</b> | DDT: {b.numero_ddt}
             <div>📅 {formattaDataIt(b.data)}</div>
             <div>👤 {b.creatore_carrello || "-"}</div>
-            <div>📦 {b.nome_carrello || "-"}</div>
+            <div>📝 {b.nome_carrello || "-"}</div>
             {b.usata && <span>✅ USATA</span>}
           </div>
 

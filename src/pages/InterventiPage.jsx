@@ -55,12 +55,16 @@ export default function InterventiPage() {
   const [fonteFiltro2, setFonteFiltro2] = useState("")
   const [fonteFiltro3, setFonteFiltro3] = useState("")
   const [fonteFiltro4, setFonteFiltro4] = useState("")
+  const [bollaFiltroOperatore, setBollaFiltroOperatore] = useState("")
+  const [bollaFiltroDescrizione, setBollaFiltroDescrizione] = useState("")
   const [rigenerandoPreferiti, setRigenerandoPreferiti] = useState(false)
   const [materialiSelezionati, setMaterialiSelezionati] = useState([])
   const [inserendoMateriali, setInserendoMateriali] = useState(false)
   const [carrelloRicercaApertoId, setCarrelloRicercaApertoId] = useState(null)
   const [fornitoriRicerca, setFornitoriRicerca] = useState([])
   const [fornitoreRicercaSelezionato, setFornitoreRicercaSelezionato] = useState("")
+  const [categorieFornitore, setCategorieFornitore] = useState([])
+  const [categoriaFornitoreSelezionata, setCategoriaFornitoreSelezionata] = useState("")
 
   const [showAltroMat, setShowAltroMat] = useState(false)
   const [interventoAppenaSalvato, setInterventoAppenaSalvato] = useState(false)
@@ -1046,6 +1050,7 @@ export default function InterventiPage() {
         creatore: String(fonte.creatore_carrello || "").trim(),
         nome_carrello: String(fonte.nome_carrello || fonte.nome || "").trim(),
         fornitore: String(fonte.insieme_carrello || "").trim(),
+        categoria: String(fonte.categoria_carrello || "").trim(),
         descrizione_fonte: String(
           fonte.descrizione_ricerca || fonte.nome_carrello || fonte.nome || ""
         ).trim(),
@@ -1066,6 +1071,10 @@ export default function InterventiPage() {
       setPreferiti([])
       setFornitoriRicerca([])
       setFornitoreRicercaSelezionato("")
+      setCategorieFornitore([])
+      setCategoriaFornitoreSelezionata("")
+      setCategorieFornitore([])
+      setCategoriaFornitoreSelezionata("")
       setCarrelloRicercaApertoId(null)
       return
     }
@@ -1091,6 +1100,8 @@ export default function InterventiPage() {
 
       setFornitoriRicerca(fornitori)
       setFornitoreRicercaSelezionato("")
+      setCategorieFornitore([])
+      setCategoriaFornitoreSelezionata("")
       setCarrelloRicercaApertoId(null)
 
       // 2) La ricerca diretta dei carrelli considera SOLO nome/descrizione/promemoria.
@@ -1123,12 +1134,13 @@ export default function InterventiPage() {
 
     setPreferitiLoading(true)
     setFornitoreRicercaSelezionato(nome)
+    setCategoriaFornitoreSelezionata("")
     setCarrelloRicercaApertoId(null)
 
     try {
       const { data, error } = await supabase
         .from("bolle_acquisto")
-        .select("id, data, tipo, nome, nome_carrello, numero_ddt, numero_ordine, creatore_carrello, descrizione_ricerca, insieme_carrello")
+        .select("*")
         .eq("tipo", "carrello")
         .ilike("insieme_carrello", nome)
         .order("nome_carrello", { ascending: true })
@@ -1137,13 +1149,37 @@ export default function InterventiPage() {
 
       const gruppi = await costruisciGruppiCarrelli(data || [])
       setPreferiti(gruppi)
+
+      const categorie = Array.from(
+        new Set(
+          gruppi.map((g) => String(g.categoria || "").trim() || "SENZA CATEGORIA")
+        )
+      ).sort((a, b) => a.localeCompare(b, "it"))
+
+      setCategorieFornitore(categorie)
     } catch (err) {
       console.error(err)
       alert("Errore caricamento carrelli del fornitore: " + (err?.message || err))
       setPreferiti([])
+      setCategorieFornitore([])
     } finally {
       setPreferitiLoading(false)
     }
+  }
+
+  function apriCategoriaFornitore(nomeCategoria) {
+    setCategoriaFornitoreSelezionata(String(nomeCategoria || "").trim())
+    setCarrelloRicercaApertoId(null)
+  }
+
+  function carrelliCategoriaSelezionata() {
+    const categoria = String(categoriaFornitoreSelezionata || "").trim()
+    if (!categoria) return []
+
+    return preferiti.filter((gruppo) => {
+      const valore = String(gruppo.categoria || "").trim() || "SENZA CATEGORIA"
+      return valore === categoria
+    })
   }
 
   useEffect(() => {
@@ -1154,6 +1190,8 @@ export default function InterventiPage() {
       setPreferiti([])
       setFornitoriRicerca([])
       setFornitoreRicercaSelezionato("")
+      setCategorieFornitore([])
+      setCategoriaFornitoreSelezionata("")
       setCarrelloRicercaApertoId(null)
       return
     }
@@ -1291,7 +1329,21 @@ export default function InterventiPage() {
       ? ricercaGenerale.split(/\s+/).filter(Boolean)
       : []
 
+    const filtroOperatoreNorm = String(bollaFiltroOperatore || "").trim().toLowerCase()
+    const filtroDescrizioneNorm = String(bollaFiltroDescrizione || "").trim().toLowerCase()
+
     return preferiti
+      .filter((gruppo) => {
+        if (preferitiTipo !== "bolle") return true
+
+        const operatore = String(gruppo.creatore || "").trim().toLowerCase()
+        const descrizione = String(gruppo.descrizione_fonte || "").trim().toLowerCase()
+
+        const operatoreOk = !filtroOperatoreNorm || operatore === filtroOperatoreNorm
+        const descrizioneOk = !filtroDescrizioneNorm || descrizione.includes(filtroDescrizioneNorm)
+
+        return operatoreOk && descrizioneOk
+      })
       .map((gruppo) => {
         const fonteHaystack = [
           gruppo.numero_ddt,
@@ -1546,7 +1598,7 @@ export default function InterventiPage() {
     return materialiSelezionati.some((x) => x.key === key)
   }
 
-  function toggleMaterialeSelezionato(materiale, fonteId = "") {
+  function toggleMaterialeSelezionato(materiale, fonteId = "", tipoFonte = "") {
     const key = chiaveMaterialeScelto(materiale, fonteId)
 
     setMaterialiSelezionati((prev) => {
@@ -1556,13 +1608,18 @@ export default function InterventiPage() {
         return prev.filter((x) => x.key !== key)
       }
 
+      const quantitaBolla = Number(materiale?.quantita || 0)
+      const quantitaIniziale =
+        tipoFonte === "bolla" && quantitaBolla > 0 ? quantitaBolla : 1
+
       return [
         ...prev,
         {
           key,
           codice: String(materiale?.codice || "").trim(),
           descrizione: String(materiale?.descrizione || "").trim(),
-          quantita: 1,
+          quantita: quantitaIniziale,
+          quantita_originale_bolla: tipoFonte === "bolla" ? quantitaBolla : null,
         },
       ]
     })
@@ -3093,6 +3150,11 @@ export default function InterventiPage() {
                             <div style={{ fontSize: 12, overflowWrap: "anywhere" }}>
                               {m.descrizione || "Senza descrizione"}
                             </div>
+                            {m.quantita_originale_bolla !== null && m.quantita_originale_bolla !== undefined && (
+                              <div style={{ fontSize: 11, color: "#666", marginTop: 3 }}>
+                                Qta originale bolla: {m.quantita_originale_bolla}
+                              </div>
+                            )}
                           </div>
 
                           <input
@@ -3170,6 +3232,55 @@ export default function InterventiPage() {
                       </button>
                     </div>
 
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 0.7fr) minmax(280px, 1.3fr) auto",
+                      gap: 8,
+                      marginTop: 10,
+                      marginBottom: 10,
+                      alignItems: "center",
+                    }}>
+                      <select
+                        value={bollaFiltroOperatore}
+                        onChange={(e) => setBollaFiltroOperatore(e.target.value)}
+                        style={inputFull}
+                      >
+                        <option value="">👤 Tutti gli operatori</option>
+                        {Array.from(
+                          new Set(
+                            preferiti
+                              .map((gruppo) => String(gruppo.creatore || "").trim())
+                              .filter(Boolean)
+                          )
+                        )
+                          .sort((a, b) => a.localeCompare(b, "it"))
+                          .map((operatore) => (
+                            <option key={operatore} value={operatore}>
+                              {operatore}
+                            </option>
+                          ))}
+                      </select>
+
+                      <input
+                        type="text"
+                        placeholder="🏷️ Filtra per descrizione bolla..."
+                        value={bollaFiltroDescrizione}
+                        onChange={(e) => setBollaFiltroDescrizione(e.target.value.toUpperCase())}
+                        style={inputFull}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBollaFiltroOperatore("")
+                          setBollaFiltroDescrizione("")
+                        }}
+                        style={preferitiDateButtonLight}
+                      >
+                        ✖ Azzera filtri
+                      </button>
+                    </div>
+
                     <div style={ricercaGlobaleRiga}>
                       <input
                         placeholder="Cerca in TUTTE le bolle..."
@@ -3228,7 +3339,7 @@ export default function InterventiPage() {
                             <button
                               type="button"
                               key={`${gruppo.id}_${p.id}`}
-                              onClick={() => toggleMaterialeSelezionato(p, gruppo.id)}
+                              onClick={() => toggleMaterialeSelezionato(p, gruppo.id, "bolla")}
                               style={{
                                 ...preferitoMaterialeCardNuovo,
                                 ...(materialeSelezionato(p, gruppo.id) ? preferitoMaterialeSelezionato : {}),
@@ -3240,6 +3351,9 @@ export default function InterventiPage() {
                               <div style={preferitoMaterialeTesto}>
                                 <div style={preferitoCodice}>{p.codice || "Senza codice"}</div>
                                 <div style={preferitoDescrizione}>{p.descrizione || "Senza descrizione"}</div>
+                                <div style={{ marginTop: 4, fontSize: 12, fontWeight: 700, color: "#555" }}>
+                                  Qta bolla: {Number(p.quantita || 0)}
+                                </div>
                               </div>
                             </button>
                           ))}
@@ -3422,31 +3536,76 @@ export default function InterventiPage() {
                               🏭 {fornitoreRicercaSelezionato}
                             </div>
                             <div style={{ marginTop: 3, fontSize: 13, color: "#666" }}>
-                              Scegli il carrello da consultare.
+                              {categoriaFornitoreSelezionata
+                                ? `📁 ${categoriaFornitoreSelezionata} — scegli il carrello.`
+                                : "Scegli prima il sottogruppo."}
                             </div>
                           </div>
+
                           <button
                             type="button"
                             onClick={() => {
-                              setFornitoreRicercaSelezionato("")
-                              void cercaMaterialiUnificata(searchMat)
+                              if (categoriaFornitoreSelezionata) {
+                                setCategoriaFornitoreSelezionata("")
+                              } else {
+                                setFornitoreRicercaSelezionato("")
+                                setCategorieFornitore([])
+                                void cercaMaterialiUnificata(searchMat)
+                              }
                             }}
                             style={secondaryButton}
                           >
-                            ⬅ Torna alla ricerca
+                            {categoriaFornitoreSelezionata
+                              ? "⬅ Torna ai sottogruppi"
+                              : "⬅ Torna alla ricerca"}
                           </button>
                         </div>
 
-                        {preferitiLoading ? (
-                          <div style={emptyBox}>Caricamento carrelli...</div>
-                        ) : preferiti.length === 0 ? (
-                          <div style={emptyBox}>Nessun carrello trovato per questo fornitore.</div>
+                        {!categoriaFornitoreSelezionata ? (
+                          preferitiLoading ? (
+                            <div style={emptyBox}>Caricamento sottogruppi...</div>
+                          ) : categorieFornitore.length === 0 ? (
+                            <div style={emptyBox}>Nessun sottogruppo trovato per questo fornitore.</div>
+                          ) : (
+                            <div style={{ display: "grid", gap: 8 }}>
+                              {categorieFornitore.map((categoria) => {
+                                const quanti = preferiti.filter((gruppo) => {
+                                  const valore = String(gruppo.categoria || "").trim() || "SENZA CATEGORIA"
+                                  return valore === categoria
+                                }).length
+
+                                return (
+                                  <button
+                                    type="button"
+                                    key={`categoria_${categoria}`}
+                                    onClick={() => apriCategoriaFornitore(categoria)}
+                                    style={{
+                                      width: "100%",
+                                      textAlign: "left",
+                                      border: "1px solid #d8dee8",
+                                      background: "#fff",
+                                      borderRadius: 9,
+                                      padding: "13px 14px",
+                                      cursor: "pointer",
+                                      fontSize: 16,
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 800 }}>
+                                      📁 {categoria} <span style={{ color: "#666", fontWeight: 600 }}>({quanti})</span>
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )
+                        ) : carrelliCategoriaSelezionata().length === 0 ? (
+                          <div style={emptyBox}>Nessun carrello trovato in questo sottogruppo.</div>
                         ) : (
                           <div style={{ display: "grid", gap: 8 }}>
-                            {preferiti.map((gruppo) => (
+                            {carrelliCategoriaSelezionata().map((gruppo) => (
                               <button
                                 type="button"
-                                key={`fornitore_carrello_${gruppo.id}`}
+                                key={`fornitore_categoria_carrello_${gruppo.id}`}
                                 onClick={() => setCarrelloRicercaApertoId(gruppo.id)}
                                 style={{
                                   width: "100%",
@@ -3480,7 +3639,9 @@ export default function InterventiPage() {
                               onClick={() => setCarrelloRicercaApertoId(null)}
                               style={secondaryButton}
                             >
-                              {fornitoreRicercaSelezionato ? "⬅ Torna ai carrelli" : "⬅ Torna ai risultati"}
+                              {fornitoreRicercaSelezionato
+                                ? (categoriaFornitoreSelezionata ? "⬅ Torna ai carrelli" : "⬅ Torna ai sottogruppi")
+                                : "⬅ Torna ai risultati"}
                             </button>
                             <div style={emptyBox}>Carrello non disponibile.</div>
                           </div>
@@ -3518,6 +3679,11 @@ export default function InterventiPage() {
                                   🏭 {gruppo.fornitore}
                                 </div>
                               )}
+                              {(gruppo.categoria || categoriaFornitoreSelezionata) && (
+                                <div style={{ marginTop: 2, fontSize: 13, color: "#666" }}>
+                                  📁 {gruppo.categoria || categoriaFornitoreSelezionata}
+                                </div>
+                              )}
                             </div>
 
                             <button
@@ -3525,7 +3691,9 @@ export default function InterventiPage() {
                               onClick={() => setCarrelloRicercaApertoId(null)}
                               style={secondaryButton}
                             >
-                              {fornitoreRicercaSelezionato ? "⬅ Torna ai carrelli" : "⬅ Torna ai risultati"}
+                              {fornitoreRicercaSelezionato
+                                ? (categoriaFornitoreSelezionata ? "⬅ Torna ai carrelli" : "⬅ Torna ai sottogruppi")
+                                : "⬅ Torna ai risultati"}
                             </button>
                           </div>
 
@@ -4839,5 +5007,5 @@ const infoBox = {
   border: "1px solid #ddd",
   padding: 10,
   borderRadius: 8,
-  fontSize: 13,
+  fontSize: 12,
 }
